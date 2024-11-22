@@ -34,7 +34,7 @@ CanvasGPT is an innovative AI-powered application designed to transform how prof
 - **HTML/CSS**: Frontend styling and layout
 - **JavaScript**: Client-side functionality and Canvas API integration 
 
-###Project Plan and Timeline
+### Project Plan and Timeline
 ```mermaid
 flowchart LR
     subgraph M1[Milestone 1: Foundation]
