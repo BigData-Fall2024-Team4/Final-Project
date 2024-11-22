@@ -98,7 +98,9 @@ Google document: https://docs.google.com/document/d/1yCfg9xHlAr_5QEOvVsMnbpE9AlR
 
 ### Architecture diagram ###
 
-![image](Architecture/images/cfa_architecture_diag.png)
+![image](Architecture/images/final_project_architecture.png)
+![image](Architecture/images/data_ingestion_flow.png)
+
 
 
 ### Deployment
