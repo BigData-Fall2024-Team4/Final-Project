@@ -92,9 +92,7 @@ flowchart LR
 
 ## Project Resources
 
-Google codelab(Project Proposal): https://codelabs-preview.appspot.com/?file_id=1yCfg9xHlAr_5QEOvVsMnbpE9AlRAGlYx_lYsCSoLxow#5
-
-Google document: https://docs.google.com/document/d/1yCfg9xHlAr_5QEOvVsMnbpE9AlRAGlYx_lYsCSoLxow/edit?tab=t.0#heading=h.dcfpcyumt53x
+Google codelab(Project Proposal):https://codelabs-preview.appspot.com/?file_id=1yCfg9xHlAr_5QEOvVsMnbpE9AlRAGlYx_lYsCSoLxow#0
 
 ### Architecture diagram ###
 
