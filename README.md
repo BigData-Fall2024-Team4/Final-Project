@@ -34,27 +34,7 @@ CanvasGPT is an innovative AI-powered application designed to transform how prof
 - **HTML/CSS**: Frontend styling and layout
 - **JavaScript**: Client-side functionality and Canvas API integration 
 
-## Project Resources
-
-Google codelab: []
-
-Google collab notebook: []
-
-### Architecture diagram ###
-
-![image](Architecture/images/cfa_architecture_diag.png)
-
-
-### Deployment
-The system is deployed on **Google Cloud Platform (GCP)**, using Docker for containerized deployment:
-- **Docker**: Containers manage FastAPI and Streamlit, with Docker Compose orchestrating the components for consistent deployment.
-- **GCP**: Ensures public access to the application and scalable infrastructure to accommodate user demand.
-
-
-### Additional Notes
-WE ATTEST THAT WE HAVEN’T USED ANY OTHER STUDENTS’ WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK. 
-
-
+###Project Plan and Timeline
 ```mermaid
 flowchart LR
     subgraph M1[Milestone 1: Foundation]
@@ -108,6 +88,28 @@ flowchart LR
     style C4 fill:#ffffff,stroke:#000000
     style D4 fill:#ffffff,stroke:#000000
     style E4 fill:#ffffff,stroke:#000000
+
+
+## Project Resources
+
+Google codelab: []
+
+Google collab notebook: []
+
+### Architecture diagram ###
+
+![image](Architecture/images/cfa_architecture_diag.png)
+
+
+### Deployment
+The system is deployed on **Google Cloud Platform (GCP)**, using Docker for containerized deployment:
+- **Docker**: Containers manage FastAPI and Streamlit, with Docker Compose orchestrating the components for consistent deployment.
+- **GCP**: Ensures public access to the application and scalable infrastructure to accommodate user demand.
+
+
+### Additional Notes
+WE ATTEST THAT WE HAVEN’T USED ANY OTHER STUDENTS’ WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK. 
+
 
 
 
