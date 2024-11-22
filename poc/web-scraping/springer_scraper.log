@@ -1,0 +1,72 @@
+2024-11-21 20:02:33,917 - INFO - Found 20 books
+2024-11-21 20:02:34,302 - INFO - Processing book: Event Analytics across Languages and Communities
+2024-11-21 20:02:37,395 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-64451-1.pdf
+2024-11-21 20:03:34,157 - INFO - Successfully uploaded springer_books/Event Analytics across Languages and Communities/book.pdf to S3
+2024-11-21 20:03:34,225 - INFO - Successfully uploaded springer_books/Event Analytics across Languages and Communities/metadata.json to S3
+2024-11-21 20:03:35,232 - INFO - Processing book: Bridging the Gap Between AI and Reality
+2024-11-21 20:03:38,194 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-73741-1.pdf
+2024-11-21 20:04:20,212 - INFO - Successfully uploaded springer_books/Bridging the Gap Between AI and Reality/book.pdf to S3
+2024-11-21 20:04:20,300 - INFO - Successfully uploaded springer_books/Bridging the Gap Between AI and Reality/metadata.json to S3
+2024-11-21 20:04:21,304 - INFO - Processing book: Electronic Voting
+2024-11-21 20:04:24,384 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-72244-8.pdf
+2024-11-21 20:04:32,491 - INFO - Successfully uploaded springer_books/Electronic Voting/book.pdf to S3
+2024-11-21 20:04:32,609 - INFO - Successfully uploaded springer_books/Electronic Voting/metadata.json to S3
+2024-11-21 20:04:33,620 - INFO - Processing book: AI in Drug Discovery
+2024-11-21 20:04:36,647 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-72381-0.pdf
+2024-11-21 20:05:06,995 - INFO - Successfully uploaded springer_books/AI in Drug Discovery/book.pdf to S3
+2024-11-21 20:05:07,070 - INFO - Successfully uploaded springer_books/AI in Drug Discovery/metadata.json to S3
+2024-11-21 20:05:08,081 - INFO - Processing book: Introduction to Digital Humanism
+2024-11-21 20:05:10,957 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-45304-5.pdf
+2024-11-21 20:05:46,718 - INFO - Successfully uploaded springer_books/Introduction to Digital Humanism/book.pdf to S3
+2024-11-21 20:05:46,810 - INFO - Successfully uploaded springer_books/Introduction to Digital Humanism/metadata.json to S3
+2024-11-21 20:05:47,812 - INFO - Processing book: Automated Reasoning
+2024-11-21 20:05:50,921 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-63501-4.pdf
+2024-11-21 20:06:05,444 - INFO - Successfully uploaded springer_books/Automated Reasoning/book.pdf to S3
+2024-11-21 20:06:05,539 - INFO - Successfully uploaded springer_books/Automated Reasoning/metadata.json to S3
+2024-11-21 20:06:06,542 - INFO - Processing book: Automated Reasoning
+2024-11-21 20:06:09,426 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-63498-7.pdf
+2024-11-21 20:06:30,266 - INFO - Successfully uploaded springer_books/Automated Reasoning/book.pdf to S3
+2024-11-21 20:06:30,358 - INFO - Successfully uploaded springer_books/Automated Reasoning/metadata.json to S3
+2024-11-21 20:06:31,361 - INFO - Processing book: Natural Scientific Language Processing and Research Knowledge Graphs
+2024-11-21 20:06:34,230 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-65794-8.pdf
+2024-11-21 20:07:00,218 - INFO - Successfully uploaded springer_books/Natural Scientific Language Processing and Research Knowledge Graphs/book.pdf to S3
+2024-11-21 20:07:00,303 - INFO - Successfully uploaded springer_books/Natural Scientific Language Processing and Research Knowledge Graphs/metadata.json to S3
+2024-11-21 20:07:01,306 - INFO - Processing book: Robust Argumentation Machines
+2024-11-21 20:07:04,102 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-63536-6.pdf
+2024-11-21 20:07:34,090 - INFO - Successfully uploaded springer_books/Robust Argumentation Machines/book.pdf to S3
+2024-11-21 20:07:34,190 - INFO - Successfully uploaded springer_books/Robust Argumentation Machines/metadata.json to S3
+2024-11-21 20:07:35,194 - INFO - Processing book: Photonic Neural Networks with Spatiotemporal Dynamics
+2024-11-21 20:07:38,295 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-981-99-5072-0.pdf
+2024-11-21 20:07:51,471 - INFO - Successfully uploaded springer_books/Photonic Neural Networks with Spatiotemporal Dynamics/book.pdf to S3
+2024-11-21 20:07:51,566 - INFO - Successfully uploaded springer_books/Photonic Neural Networks with Spatiotemporal Dynamics/metadata.json to S3
+2024-11-21 20:07:52,569 - INFO - Processing book: Feature Models
+2024-11-21 20:07:55,343 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-61874-1.pdf
+2024-11-21 20:07:57,300 - INFO - Successfully uploaded springer_books/Feature Models/book.pdf to S3
+2024-11-21 20:07:57,381 - INFO - Successfully uploaded springer_books/Feature Models/metadata.json to S3
+2024-11-21 20:07:58,382 - INFO - Processing book: Human-Centered Services Computing for Smart Cities
+2024-11-21 20:08:01,133 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-981-97-0779-9.pdf
+2024-11-21 20:08:19,477 - INFO - Successfully uploaded springer_books/Human-Centered Services Computing for Smart Cities/book.pdf to S3
+2024-11-21 20:08:19,672 - INFO - Successfully uploaded springer_books/Human-Centered Services Computing for Smart Cities/metadata.json to S3
+2024-11-21 20:08:20,676 - INFO - Processing book: Large Language Models in Cybersecurity
+2024-11-21 20:08:23,572 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-54827-7.pdf
+2024-11-21 20:08:40,673 - INFO - Successfully uploaded springer_books/Large Language Models in Cybersecurity/book.pdf to S3
+2024-11-21 20:08:40,758 - INFO - Successfully uploaded springer_books/Large Language Models in Cybersecurity/metadata.json to S3
+2024-11-21 20:08:41,761 - INFO - Processing book: Computer Aided Verification
+2024-11-21 20:08:44,570 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-65633-0.pdf
+2024-11-21 20:09:14,086 - INFO - Successfully uploaded springer_books/Computer Aided Verification/book.pdf to S3
+2024-11-21 20:09:14,172 - INFO - Successfully uploaded springer_books/Computer Aided Verification/metadata.json to S3
+2024-11-21 20:09:15,175 - INFO - Processing book: Computer Aided Verification
+2024-11-21 20:09:18,131 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-65630-9.pdf
+2024-11-21 20:09:42,645 - INFO - Successfully uploaded springer_books/Computer Aided Verification/book.pdf to S3
+2024-11-21 20:09:42,746 - INFO - Successfully uploaded springer_books/Computer Aided Verification/metadata.json to S3
+2024-11-21 20:09:43,748 - INFO - Processing book: Computer Aided Verification
+2024-11-21 20:09:46,648 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-65627-9.pdf
+2024-11-21 20:10:08,691 - INFO - Successfully uploaded springer_books/Computer Aided Verification/book.pdf to S3
+2024-11-21 20:10:08,773 - INFO - Successfully uploaded springer_books/Computer Aided Verification/metadata.json to S3
+2024-11-21 20:10:09,781 - INFO - Processing book: Objective Information Theory
+2024-11-21 20:10:12,813 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-981-19-9929-1.pdf
+2024-11-21 20:10:13,257 - ERROR - Error downloading PDF (Attempt 1): ('Connection aborted.', RemoteDisconnected('Remote end closed connection without response'))
+2024-11-21 20:10:18,137 - INFO - Successfully uploaded springer_books/Objective Information Theory/book.pdf to S3
+2024-11-21 20:10:18,235 - INFO - Successfully uploaded springer_books/Objective Information Theory/metadata.json to S3
+2024-11-21 20:10:19,237 - INFO - Processing book: Automated Reasoning with Analytic Tableaux and Related Methods
+2024-11-21 20:10:22,106 - INFO - Attempting to download PDF: https://link.springer.com/content/pdf/10.1007/978-3-031-43513-3.pdf
