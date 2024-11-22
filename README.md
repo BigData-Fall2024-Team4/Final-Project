@@ -105,6 +105,8 @@ Google document: https://docs.google.com/document/d/1yCfg9xHlAr_5QEOvVsMnbpE9AlR
 The system is deployed on **Google Cloud Platform (GCP)**, using Docker for containerized deployment:
 - **Docker**: Containers manage FastAPI and Streamlit, with Docker Compose orchestrating the components for consistent deployment.
 - **GCP**: Ensures public access to the application and scalable infrastructure to accommodate user demand.
+- **Git Actions**: When deploying with GitHub Actions, we create workflows in YAML files to automate building, testing, and deploying our code. For example, every push to the main branch can trigger a pipeline that deploys the application to a staging or production environment.
+- **GitLab**: Using GitLab for deployment, we configure CI/CD pipelines in a .gitlab-ci.yml file. The pipeline runs stages like build, test, and deploy automatically whenever we push changes to the repository, ensuring the application is consistently deployed to the desired environment.
 
 
 ### Additional Notes
