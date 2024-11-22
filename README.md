@@ -55,7 +55,59 @@ The system is deployed on **Google Cloud Platform (GCP)**, using Docker for cont
 WE ATTEST THAT WE HAVEN’T USED ANY OTHER STUDENTS’ WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK. 
 
 
+```mermaid
+flowchart LR
+    subgraph M1[Milestone 1: Foundation]
+        direction TB
+        A1[Setup] --> A2[POC]
+        A2 --> A3[Chatbot]
+        A4["<b>Nov 20-24</b>"]
+    end
 
+    subgraph M2[Milestone 2: Infrastructure]
+        direction TB
+        B1[S3] --> B2[Snowflake]
+        B2 --> B3[PDF Process]
+        B3 --> B4[Testing]
+        B5["<b>Nov 25-Dec 2</b>"]
+    end
+
+    subgraph M3[Milestone 3: Frontend & API]
+        direction TB
+        C1[Extension] --> C2[LLM]
+        C2 --> C3[FastAPI]
+        C4["<b>Nov 24-30</b>"]
+    end
+
+    subgraph M4[Milestone 4: Agent System]
+        direction TB
+        D1[Agents] --> D2[Integration]
+        D2 --> D3[Testing]
+        D4["<b>Nov 29-Dec 10</b>"]
+    end
+
+    subgraph M5[Milestone 5: Deployment]
+        direction TB
+        E1[Deploy] --> E2[CI/CD]
+        E2 --> E3[Final Test]
+        E4["<b>Dec 8-13</b>"]
+    end
+
+    M1 --> M2
+    M2 --> M3
+    M3 --> M4
+    M4 --> M5
+
+    style M1 fill:#e6f3ff
+    style M2 fill:#fff0e6
+    style M3 fill:#e6ffe6
+    style M4 fill:#ffe6e6
+    style M5 fill:#e6e6ff
+    style A4 fill:#ffffff,stroke:#000000
+    style B5 fill:#ffffff,stroke:#000000
+    style C4 fill:#ffffff,stroke:#000000
+    style D4 fill:#ffffff,stroke:#000000
+    style E4 fill:#ffffff,stroke:#000000
 
 
 
