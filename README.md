@@ -97,7 +97,7 @@ Project Proposal Video: https://drive.google.com/file/d/1qn4DgkAnMfrmZqBAY00A3Gr
 
 ### Architecture diagram ###
 
-![image](Architecture/images/final_project_architecture.png)
+![image](Architecture/images/arch.png)
 ![image](Architecture/images/data_ingestion_flow.png)
 
 
