@@ -97,7 +97,7 @@ Project Proposal Video: https://drive.google.com/file/d/1qn4DgkAnMfrmZqBAY00A3Gr
 
 ### Architecture diagram ###
 
-![image](Architecture/images/update.png)
+![image](Architecture/images/update1.png)
 ![image](Architecture/images/ariflow_design.png)
 
 
