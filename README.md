@@ -107,7 +107,7 @@ The system is deployed on **Google Cloud Platform (GCP)**, using Docker for cont
 - **Docker**: Containers manage FastAPI and Streamlit, with Docker Compose orchestrating the components for consistent deployment.
 - **GCP**: Ensures public access to the application and scalable infrastructure to accommodate user demand.
 - **Git Actions**: When deploying with GitHub Actions, we create workflows in YAML files to automate building, testing, and deploying our code.
-- **GitLab**: Using GitLab for deployment, we configure CI/CD pipelines in a .gitlab-ci.yml file. The pipeline runs stages like build, test, and deploy automatically whenever we push changes to the repository, ensuring the application is consistently deployed to the desired environment.
+- **GitLab**: We plan to leverage GitHub Actions to implement CI/CD pipeline for our project. This setup will automate essential tasks such as deployment, dependency management, and initial testing whenever changes are pushed to the frontend (Chrome extension) or backend (FastAPI) repositories. Additionally, it will facilitate deployments to our GCP instance using Docker, ensuring updated code, rebuilt images. By automating these processes, we aim to maintain system stability, and accelerate feature updates for the CanvasGPT system.
 
 
 ### Additional Notes
