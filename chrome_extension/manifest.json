@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Chatbot Assistant",
+  "version": "1.0",
+  "description": "A chatbot extension with file upload capability",
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "permissions": [
+    "storage"
+  ]
+}
