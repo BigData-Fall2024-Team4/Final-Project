@@ -8,49 +8,89 @@
       height: 500px;
       padding: 10px;
       font-family: Arial, sans-serif;
-    }
-    #chat-container {
+      margin: 0;
+  }
+  #chat-container {
       height: 350px;
       overflow-y: auto;
       border: 1px solid #ccc;
       padding: 10px;
       margin-bottom: 10px;
-    }
-    .message {
-      margin: 5px 0;
-      padding: 5px;
-      border-radius: 5px;
-    }
-    .user-message {
-      background-color: #e3f2fd;
-      margin-left: 20px;
-    }
-    .bot-message {
-      background-color: #f5f5f5;
-      margin-right: 20px;
-    }
-    #input-container {
+      background-color: #f8f9fa;
+  }
+  .message {
+      margin: 8px 0;
+      padding: 8px;
+      border-radius: 8px;
+      max-width: 85%;
+      position: relative;
+  }
+  .user-message {
+      background-color: #007bff;
+      color: white;
+      margin-left: auto;
+      margin-right: 5px;
+  }
+  .bot-message {
+      background-color: #e9ecef;
+      color: #212529;
+      margin-right: auto;
+      margin-left: 5px;
+  }
+  .timestamp {
+      font-size: 0.7em;
+      color: #6c757d;
+      position: absolute;
+      bottom: 2px;
+      right: 8px;
+  }
+  .sender-label {
+      font-size: 0.8em;
+      margin-bottom: 4px;
+      font-weight: bold;
+  }
+  .message-content {
+      margin-bottom: 15px;
+      word-wrap: break-word;
+  }
+  #input-container {
       display: flex;
       flex-direction: column;
       gap: 10px;
-    }
-    #message-input {
+      padding: 10px;
+      background-color: white;
+      border-top: 1px solid #dee2e6;
+  }
+  #message-input {
       width: 100%;
-      padding: 5px;
+      padding: 8px;
+      border: 1px solid #ced4da;
+      border-radius: 4px;
       resize: none;
-    }
-    .controls {
+      font-size: 14px;
+  }
+  .controls {
       display: flex;
       gap: 10px;
-    }
-    button {
-      padding: 5px 10px;
+  }
+  button {
+      padding: 6px 12px;
       cursor: pointer;
-    }
-    #file-name {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      transition: background-color 0.2s;
+  }
+  button:hover {
+      background-color: #0056b3;
+  }
+  #file-name {
       font-size: 0.8em;
-      color: #666;
-    }
+      color: #6c757d;
+      margin-top: 5px;
+  }
   </style>
 </head>
 <body>
