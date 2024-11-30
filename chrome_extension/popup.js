@@ -41,7 +41,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     try {
-      const response = await fetch('http://your-backend-url/agent-workflow', {
+      const response = await fetch('http://localhost:8000/agent-workflow', {
         method: 'POST',
         body: formData
       });
