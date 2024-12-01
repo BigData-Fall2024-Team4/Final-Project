@@ -2,15 +2,9 @@ import requests
 import json
 from typing import Optional
 
-def query_web_agent(url: str, question: Optional[str] = None) -> None:
-    """Query the web agent with a URL and optional question"""
+def query_web_agent(query: str) -> None:
+    """Query the web agent with user input"""
     try:
-        # Construct the query
-        if question:
-            query = f"{question} {url}"
-        else:
-            query = url
-            
         # Make the request
         response = requests.post(
             "http://localhost:8000/agent-workflow",
@@ -18,10 +12,9 @@ def query_web_agent(url: str, question: Optional[str] = None) -> None:
             headers={"Content-Type": "application/json"}
         )
         
-        # Print request details
+        # Print divider and query
         print("\n" + "="*80)
-        print(f"URL: {url}")
-        print(f"Question: {question if question else 'No question - getting content summary'}")
+        print(f"\nQuery: {query}")
         
         # Print response
         if response.status_code == 200:
@@ -32,34 +25,25 @@ def query_web_agent(url: str, question: Optional[str] = None) -> None:
             print(f"\nError: Status code {response.status_code}")
             print(response.text)
         
-        print("="*80)
+        print("\n" + "="*80)
 
     except Exception as e:
-        print(f"Error occurred: {str(e)}")
+        print(f"\nError occurred: {str(e)}")
 
 def main():
-    # Test cases
-    test_cases = [
-        {
-            "url": "https://news.northeastern.edu/2024/10/29/commencement-2025-fenway-park/",
-            "question": "When and where is the commencement ceremony?"
-        },
-        {
-            "url": "https://news.northeastern.edu/2024/10/29/commencement-2025-fenway-park/",
-            "question": None
-        },
-        {
-            "url": "https://www.python.org/about/",
-            "question": "What are the key features of Python?"
-        }
-    ]
+    print("\nWelcome to Web Agent Test System!")
+    print("Type 'exit' to quit")
+    print("You can ask questions or provide URLs")
     
-    print("\nStarting Web Agent Tests...")
-    
-    for case in test_cases:
-        query_web_agent(case['url'], case['question'])
+    while True:
+        query = input("\nEnter your query: ").strip()
         
-    print("\nTests completed!")
+        if query.lower() == 'exit':
+            print("\nGoodbye!")
+            break
+        
+        if query:
+            query_web_agent(query)
 
 if __name__ == "__main__":
     main()
