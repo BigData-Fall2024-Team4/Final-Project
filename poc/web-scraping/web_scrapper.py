@@ -122,33 +122,41 @@ def upload_to_s3(s3, bucket, key_name, content, content_type):
     return False
 
 def scrape_springer_books(s3, bucket):
-    """Main function to scrape Springer books."""
+    """Main function to scrape Springer books across multiple pages."""
     base_url = "https://link.springer.com/search?facet-content-type=%22Book%22&package=openaccess&facet-language=%22En%22&facet-sub-discipline=%22Artificial+Intelligence%22&facet-discipline=%22Computer+Science%22"
     driver = setup_webdriver()
+    books_processed = 0
 
     try:
-        driver.get(base_url)
-        time.sleep(5)
+        for page in range(1, 3):  # Scrape the first 5 pages
+            page_url = f"{base_url}&page={page}"
+            logger.info(f"Accessing page {page}: {page_url}")
+            
+            driver.get(page_url)
+            time.sleep(5)
 
-        book_elements = WebDriverWait(driver, 10).until(
-            EC.presence_of_all_elements_located((By.CSS_SELECTOR, "a.title"))
-        )
-        logger.info(f"Found {len(book_elements)} books")
+            # Find book elements on the current page
+            try:
+                book_elements = WebDriverWait(driver, 10).until(
+                    EC.presence_of_all_elements_located((By.CSS_SELECTOR, "a.title"))
+                )
+                logger.info(f"Found {len(book_elements)} books on page {page}")
 
-        books = []
-        for element in book_elements:
-            title = element.text.strip()
-            href = element.get_attribute('href')
-            if title and href:
-                full_url = urllib.parse.urljoin("https://link.springer.com", href)
-                books.append({'title': title, 'url': full_url})
+                books = []
+                for element in book_elements:
+                    title = element.text.strip()
+                    href = element.get_attribute('href')
+                    if title and href:
+                        full_url = urllib.parse.urljoin("https://link.springer.com", href)
+                        books.append({'title': title, 'url': full_url})
 
-        books_processed = 0
-        for book in books:
-            if process_book(driver, s3, bucket, book['title'], book['url']):
-                books_processed += 1
-                time.sleep(1)
-
+                # Process each book
+                for book in books:
+                    if process_book(driver, s3, bucket, book['title'], book['url']):
+                        books_processed += 1
+                        time.sleep(1)
+            except TimeoutException:
+                logger.error(f"No books found on page {page}")
     except Exception as e:
         logger.error(f"Error during scraping: {e}")
     finally:
