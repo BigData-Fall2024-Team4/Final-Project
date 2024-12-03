@@ -194,7 +194,7 @@ def process_s3_metadata():
                         'TITLE': title,
                         'PDF_URL': pdf_url if pdf_url else '',
                         'TXT_URL': txt_url if txt_url else '',
-                        'IMAGE_URLS': sorted(image_urls),  # Sort URLs for consistency
+                        'IMAGE_URLS': sorted(image_urls),
                         'URL': url,
                         'S3_BUCKET': aws_config.bucket
                     }
@@ -238,7 +238,7 @@ def create_snowflake_table():
             DROP TABLE IF EXISTS BOOK_DATA
             """)
             
-            # Create new table with single IMAGE_URL column
+            # Create new table with single IMAGE_URL columns
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS BOOK_DATA (
                 ID INTEGER AUTOINCREMENT START 1 INCREMENT 1,
@@ -346,7 +346,7 @@ def load_to_snowflake(processed_data: list):
         if conn:
             conn.close()
 
-            
+
 # DAG definition
 default_args = {
     'owner': 'airflow',
