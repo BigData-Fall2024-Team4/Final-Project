@@ -24,9 +24,12 @@ app.add_middleware(
 class QueryRequest(BaseModel):
     query: str
 
-# Initialize supervisor
-supervisor = CanvasGPTSupervisor(openai_api_key=os.getenv("OPENAI_API_KEY"))
-
+# Initialize supervisor with Canvas credentials
+supervisor = CanvasGPTSupervisor(
+    openai_api_key=os.getenv("OPENAI_API_KEY"),
+    canvas_api_key=os.getenv("CANVAS_API_KEY"),
+    canvas_base_url=os.getenv("CANVAS_BASE_URL")
+)
 @app.post("/agent-workflow")
 async def process_message(
     request: QueryRequest = Body(...),  # For JSON payload
@@ -77,3 +80,51 @@ async def reset_supervisor():
     """Endpoint to reset supervisor state"""
     await supervisor.reset_state()
     return {"status": "success", "message": "Supervisor state reset"}
+
+@app.get("/courses")
+async def list_courses():
+    """Endpoint to list all available courses"""
+    try:
+        courses = await supervisor.get_available_courses()
+        return {
+            "success": True,
+            "courses": courses
+        }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
+@app.get("/canvas-test")
+async def test_canvas_connection():
+    """Test Canvas API connection and configuration"""
+    try:
+        if not supervisor.canvas_agent:
+            return {
+                "success": False,
+                "error": "Canvas agent not configured",
+                "details": {
+                    "api_key_set": bool(os.getenv("CANVAS_API_KEY")),
+                    "base_url_set": bool(os.getenv("CANVAS_BASE_URL"))
+                }
+            }
+            
+        # Test the connection
+        await supervisor.canvas_agent._ensure_session()
+        async with supervisor.canvas_agent.session.get(
+            f"{supervisor.canvas_agent.base_url}/api/v1/courses",
+            headers=supervisor.canvas_agent.headers
+        ) as response:
+            return {
+                "success": True,
+                "status": response.status,
+                "headers": dict(response.headers),
+                "api_base_url": supervisor.canvas_agent.base_url,
+                "api_key_present": bool(supervisor.canvas_agent.api_key)
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": str(e)
+        }
