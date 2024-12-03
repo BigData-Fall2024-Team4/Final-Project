@@ -214,7 +214,7 @@ def process_s3_metadata():
     
 @task
 def create_snowflake_table():
-    """Task to create Snowflake table with correct schema."""
+    """Task to create Snowflake table with schema for individual image URLs."""
     try:
         conn = snowflake.connector.connect(
             user=SNOWFLAKE_USER,
@@ -230,8 +230,6 @@ def create_snowflake_table():
             # Resume warehouse
             cursor.execute(f"ALTER WAREHOUSE {SNOWFLAKE_WAREHOUSE} RESUME IF SUSPENDED")
             cursor.execute(f"USE WAREHOUSE {SNOWFLAKE_WAREHOUSE}")
-            
-            # Use database and schema
             cursor.execute(f"USE DATABASE {SNOWFLAKE_DATABASE}")
             cursor.execute(f"USE SCHEMA {SNOWFLAKE_SCHEMA}")
             
@@ -240,14 +238,14 @@ def create_snowflake_table():
             DROP TABLE IF EXISTS BOOK_DATA
             """)
             
-            # Create new table with ARRAY type for IMAGE_URLS
+            # Create new table with single IMAGE_URL column
             cursor.execute("""
             CREATE TABLE IF NOT EXISTS BOOK_DATA (
                 ID INTEGER AUTOINCREMENT START 1 INCREMENT 1,
                 TITLE VARCHAR(1000),
                 PDF_URL VARCHAR(1000),
                 TXT_URL VARCHAR(1000),
-                IMAGE_URLS ARRAY,
+                IMAGE_URL VARCHAR(1000),  -- Changed from ARRAY to single URL
                 URL VARCHAR(1000),
                 S3_BUCKET VARCHAR(100),
                 CREATED_AT TIMESTAMP_NTZ DEFAULT CURRENT_TIMESTAMP(),
@@ -268,7 +266,7 @@ def create_snowflake_table():
 
 @task
 def load_to_snowflake(processed_data: list):
-    """Task to load processed book data into Snowflake."""
+    """Task to load processed book data into Snowflake with individual rows for images."""
     if not processed_data:
         logger.warning("No data received for loading into Snowflake")
         return {"records_loaded": 0}
@@ -296,42 +294,31 @@ def load_to_snowflake(processed_data: list):
             
             for book_data in processed_data:
                 try:
-                    # First, create an array of URLs in Snowflake
-                    image_urls_array = book_data['IMAGE_URLS']
-                    
-                    # Insert using ARRAY_CONSTRUCT
-                    insert_sql = """
-                    INSERT INTO BOOK_DATA (
-                        TITLE, 
-                        PDF_URL, 
-                        TXT_URL, 
-                        IMAGE_URLS, 
-                        URL, 
-                        S3_BUCKET
-                    ) 
-                    SELECT
-                        %s,
-                        %s,
-                        %s,
-                        ARRAY_CONSTRUCT_COMPACT(%s),
-                        %s,
-                        %s
-                    """
-                    
-                    # Convert list of URLs to comma-separated string for ARRAY_CONSTRUCT
-                    image_urls_str = ", ".join(f"'{url}'" for url in image_urls_array)
-                    
-                    # Execute with proper parameters
-                    cursor.execute(insert_sql, (
-                        book_data['TITLE'],
-                        book_data['PDF_URL'],
-                        book_data['TXT_URL'],
-                        image_urls_str,
-                        book_data['URL'],
-                        book_data['S3_BUCKET']
-                    ))
-                    successful_count += 1
-                    logger.info(f"Inserted record for book: {book_data['TITLE']} with {len(image_urls_array)} images")
+                    # Create one row for each image URL
+                    for image_url in book_data['IMAGE_URLS']:
+                        insert_sql = """
+                        INSERT INTO BOOK_DATA (
+                            TITLE, 
+                            PDF_URL, 
+                            TXT_URL, 
+                            IMAGE_URL,  -- Single URL
+                            URL, 
+                            S3_BUCKET
+                        ) 
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        """
+                        
+                        cursor.execute(insert_sql, (
+                            book_data['TITLE'],
+                            book_data['PDF_URL'],
+                            book_data['TXT_URL'],
+                            image_url,  # Individual image URL
+                            book_data['URL'],
+                            book_data['S3_BUCKET']
+                        ))
+                        successful_count += 1
+                        
+                    logger.info(f"Inserted {len(book_data['IMAGE_URLS'])} records for book: {book_data['TITLE']}")
                     
                 except Exception as e:
                     logger.error(f"Error inserting book {book_data['TITLE']}: {str(e)}")
@@ -344,7 +331,7 @@ def load_to_snowflake(processed_data: list):
             total_count = cursor.fetchone()[0]
             
             # Log results
-            logger.info(f"Successfully loaded {successful_count} books to Snowflake")
+            logger.info(f"Successfully loaded {successful_count} image records to Snowflake")
             logger.info(f"Total records in table: {total_count}")
             
             return {
@@ -359,6 +346,7 @@ def load_to_snowflake(processed_data: list):
         if conn:
             conn.close()
 
+            
 # DAG definition
 default_args = {
     'owner': 'airflow',
