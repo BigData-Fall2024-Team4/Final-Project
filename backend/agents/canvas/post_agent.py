@@ -162,6 +162,35 @@ class CanvasPostAgent:
         except Exception as e:
             logger.error(f"Error extracting title: {str(e)}")
             return None
+        
+    def parse_submission_types(self, message: str) -> List[str]:
+        """Parse submission types from message"""
+        submission_types = []
+        message_lower = message.lower()
+
+        # Map of keywords to Canvas submission types
+        type_mapping = {
+            "text entry": ["online_text_entry"],
+            "website url": ["online_url"],
+            "file upload": ["online_upload"],
+            "media recording": ["media_recording"],
+            "student annotation": ["student_annotation"],
+            "external tool": ["external_tool"],
+            "no submission": ["none"],
+            "on paper": ["on_paper"],
+            "online": ["online_text_entry", "online_url", "online_upload", "media_recording"]
+        }
+
+        # Check for each submission type in the message
+        for keyword, types in type_mapping.items():
+            if keyword in message_lower:
+                submission_types.extend(types)
+
+        # Default to online text entry if no type specified
+        if not submission_types:
+            submission_types = ["online_text_entry"]
+
+        return list(set(submission_types))
 
     def _extract_link(self, message: str) -> Optional[str]:
         """Extract link from message if specified with 'link:' prefix or contains URL"""
@@ -198,6 +227,8 @@ class CanvasPostAgent:
             logger.error(f"Error generating title: {str(e)}")
             return "Generated Content"
 
+
+
     async def process(self, content: str, message: str) -> Dict[str, Any]:
         """Process Canvas operations based on message content"""
         try:
@@ -220,19 +251,6 @@ class CanvasPostAgent:
                     "message": f"Could not find course: {course_name}"
                 }
 
-            # Extract title
-            title = self._extract_title(message)
-            if not title:
-                title = "Quiz"  # Default title if none provided
-
-            logger.info(f"Processing {course_name} with title: {title}")
-
-            # Handle structured quiz format
-            if "Questions" in content and "(Correct Answer:" in content:
-                logger.info(f"Creating structured quiz in course {course_name}")
-                return await self.handle_structured_quiz(course_id, title, content)
-
-
             # Extract title and link if present
             title = self._extract_title(message)
             link = self._extract_link(message)
@@ -254,13 +272,96 @@ class CanvasPostAgent:
 
             logger.info(f"Processing {course_name} with title: {title}")
 
-            # Determine content type and process accordingly
-            result = None
             try:
-                # Check for structured quiz format first
-                if "quiz" in message.lower() and "**Questions" in content:
+                # Handle assignment creation
+                if "assignment" in message.lower():
+                    logger.info(f"Creating assignment in course {course_name}")
+
+                    # Split content at "Assignment:"
+                    content_parts = content.split("Assignment:", 1)
+                    
+                    if len(content_parts) != 2:
+                        return {
+                            "success": False,
+                            "message": "Could not find assignment content. Please include 'Assignment:' followed by the content."
+                        }
+
+                    # Get metadata from the first part and assignment content from the second part
+                    metadata_text = content_parts[0]
+                    assignment_content = content_parts[1].strip()
+
+                    # Parse points
+                    points = 100  # Default points
+                    points_match = re.search(r'points?(?:\s+should\s+be)?\s*[:=]?\s*(\d+)', metadata_text.lower())
+                    if points_match:
+                        points = int(points_match.group(1))
+
+                    # Parse due date if present
+                    due_date = None
+                    date_match = re.search(r'due\s*(?:by|date)?[:=]?\s*([^"\n]+)', metadata_text, re.IGNORECASE)
+                    if date_match:
+                        due_date_str = date_match.group(1).strip()
+                        try:
+                            from datetime import datetime
+                            # Try different date formats
+                            for fmt in [
+                                "%m/%d/%Y %I:%M %p",
+                                "%m/%d/%Y %H:%M",
+                                "%m-%d-%Y %I:%M %p",
+                                "%B %d, %Y %I:%M %p",
+                                "%m/%d/%Y %I:%M%p",
+                                "%m-%d-%Y %I:%M%p",
+                                "%B %d, %Y %I:%M%p"
+                            ]:
+                                try:
+                                    parsed_date = datetime.strptime(due_date_str, fmt)
+                                    due_date = parsed_date.isoformat()
+                                    break
+                                except ValueError:
+                                    continue
+                        except Exception as e:
+                            logger.error(f"Error parsing due date: {str(e)}")
+
+                    # Get submission types
+                    submission_types = self.parse_submission_types(metadata_text)
+
+                    # Format assignment content to preserve formatting
+                    # Replace newlines with HTML line breaks and preserve code formatting
+                    formatted_content = f"<div class='assignment-content'>{assignment_content.replace(chr(10), '<br>')}</div>"
+
+                    # Create assignment
+                    result = await self.assignment_agent.create_assignment(
+                        course_id=course_id,
+                        name=title or "Assignment",
+                        description=formatted_content,
+                        points=points,
+                        due_date=due_date,
+                        submission_types=submission_types
+                    )
+
+                    if "error" in result:
+                        return {
+                            "success": False,
+                            "message": f"Error creating assignment: {result['error']}"
+                        }
+
+                    return {
+                        "success": True,
+                        "message": (
+                            f"Successfully created assignment in {course_name}!\n"
+                            f"Points: {points}\n"
+                            f"Due Date: {due_date or 'Not set'}\n"
+                            f"Submission Type: {', '.join(submission_types)}"
+                        ),
+                        "details": result
+                    }
+
+                # Handle structured quiz creation
+                elif "quiz" in message.lower() and "(Correct Answer:" in content:
                     logger.info(f"Creating structured quiz in course {course_name}")
                     return await self.handle_structured_quiz(course_id, title, content)
+
+                # Handle quiz creation with generated questions
                 elif "quiz" in message.lower():
                     logger.info(f"Creating quiz in course {course_name}")
                     quiz_questions = await self._generate_quiz_questions(content)
@@ -269,7 +370,8 @@ class CanvasPostAgent:
                         title=title,
                         description="Quiz generated based on provided content",
                         quiz_type='assignment',
-                        time_limit=30
+                        time_limit=30,
+                        points_possible=len(quiz_questions)
                     )
                     
                     if 'error' in quiz:
@@ -282,45 +384,36 @@ class CanvasPostAgent:
                     for question in quiz_questions:
                         await self.quiz_agent.add_question(course_id, quiz_id, question)
                     
-                    result = {
+                    return {
+                        "success": True,
+                        "message": f"Successfully created quiz with {len(quiz_questions)} questions",
                         "quiz_id": quiz_id,
-                        "question_count": len(quiz_questions),
-                        "quiz_data": quiz
+                        "question_count": len(quiz_questions)
                     }
-                    
-                elif "assignment" in message.lower():
-                    logger.info(f"Creating assignment in course {course_name}")
-                    result = await self.assignment_agent.create_assignment(
-                        course_id,
-                        title,
-                        content,
-                        100,  # default points
-                        None,  # no due date
-                        ["online_text_entry"]
-                    )
+
+                # Handle announcements
                 else:
                     logger.info(f"Creating announcement in course {course_name}")
                     result = await self.announcement_agent.create_announcement(
-                        course_id,
-                        title,
-                        content
+                        course_id=course_id,
+                        title=title,
+                        content=content
                     )
 
-                if isinstance(result, dict) and "error" in result:
-                    logger.error(f"Error from sub-agent: {result['error']}")
+                    if isinstance(result, dict) and "error" in result:
+                        return {
+                            "success": False,
+                            "message": str(result["error"])
+                        }
+
                     return {
-                        "success": False,
-                        "message": str(result["error"])
+                        "success": True,
+                        "message": f"Successfully posted to {course_name}",
+                        "details": result
                     }
 
-                return {
-                    "success": True,
-                    "message": f"Successfully posted to {course_name}",
-                    "details": result
-                }
-
             except Exception as e:
-                logger.error(f"Error in sub-agent operation: {str(e)}")
+                logger.error(f"Error in content creation: {str(e)}")
                 return {
                     "success": False,
                     "message": f"Error in content creation: {str(e)}"
@@ -332,6 +425,8 @@ class CanvasPostAgent:
                 "success": False,
                 "message": f"Error processing request: {str(e)}"
             }
+
+
 
     async def _generate_quiz_questions(self, content: str) -> List[Dict[str, Any]]:
         """Generate quiz questions from content"""
