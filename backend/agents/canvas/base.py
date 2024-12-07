@@ -26,21 +26,3 @@ class CanvasBaseAgent:
         if self.session:
             await self.session.close()
             self.session = None
-
-    async def get_course_id(self, course_name: str) -> Optional[str]:
-        """Get Canvas course ID from course name"""
-        try:
-            await self._ensure_session()
-            async with self.session.get(
-                f"{self.base_url}/api/v1/courses",
-                headers=self.headers
-            ) as response:
-                if response.status == 200:
-                    courses = await response.json()
-                    for course in courses:
-                        if course_name.lower() in course['name'].lower():
-                            return str(course['id'])
-                return None
-        except Exception as e:
-            logger.error(f"Error getting course ID: {str(e)}")
-            return None
