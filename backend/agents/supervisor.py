@@ -1,4 +1,4 @@
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, Optional, List, Union 
 from pydantic import BaseModel, Field
 from langchain_openai import ChatOpenAI
 import logging
@@ -7,6 +7,7 @@ from .canvas.post_agent import CanvasPostAgent
 import re
 from datetime import datetime, timezone, timedelta  
 import json  
+from .document_handler import DocumentHandlerAgent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -33,9 +34,12 @@ class CanvasGPTSupervisor:
         self.web_agent = WebSearchAgent()
         self.canvas_agent = CanvasPostAgent(canvas_api_key, canvas_base_url) if canvas_api_key else None
         self.state = SupervisorState()
-        self.pending_quiz = None  # Store pending quiz content
-        self.pending_announcement = None  # Store pending announcement content
-        self.pending_assignment = None  # Store pending assignment content
+        self.document_handler = DocumentHandlerAgent()
+
+        self.pending_quiz = None  
+        self.pending_announcement = None 
+        self.pending_assignment = None  
+        self.pending_page = None  
         logger.info("CanvasGPT Supervisor initialized")
 
     def _get_conversation_context(self, current_message: str) -> str:
@@ -63,31 +67,64 @@ class CanvasGPTSupervisor:
         """
         return context_prompt
 
+
     async def _route_message(self, message: str) -> str:
         """Determine which agent should handle the message"""
+        # First check explicitly for file upload before using GPT
+        if "with the file uploaded" in message.lower():
+            logger.info("File upload detected, routing to document handler")
+            message_lower = message.lower()
+            
+            # Set post type based on message content
+            if 'to my announcement' in message_lower or 'to my announcment' in message_lower:
+                self.state.context['post_type'] = 'announcement'
+            elif 'as a page' in message_lower:
+                self.state.context['post_type'] = 'page'
+            elif 'as an assignment' in message_lower:
+                self.state.context['post_type'] = 'assignment'
+            elif 'as a quiz' in message_lower:
+                self.state.context['post_type'] = 'quiz'
+            else:
+                # Default to announcement if not specified
+                self.state.context['post_type'] = 'announcement'
+                
+            # Extract text content if present
+            if "Text:" in message:
+                text_match = re.search(r'Text:\s*"([^"]+)"', message)
+                if text_match:
+                    self.state.context["announcement_text"] = text_match.group(1)
+                    
+            logger.info(f"Document handler route detected. Post type: {self.state.context.get('post_type')}")
+            return "document_handler"
+            
+        # For non-file messages, use the GPT routing
         routing_prompt = f"""
-Given the following message, determine if it requires:
-1. canvas_assignment - If it mentions creating or generating an assignment
-2. web_search - If it contains a URL or asks for web content
-3. canvas_post - If it mentions posting to Canvas or course announcements
-4. canvas_list - If it asks about available courses or course listing
-5. canvas_quiz - If it mentions creating or generating a quiz
-6. general - For general queries
+        Given the following message, determine if it requires:
+        1. canvas_page - If it contains 'as a page', 'create page', or any reference to pages
+        2. canvas_assignment - If it mentions creating or generating an assignment
+        3. canvas_quiz - If it mentions creating or generating a quiz
+        4. canvas_list - If it asks about available courses or course listing
+        5. web_search - If it contains a URL or asks for web content
+        6. canvas_post - If it mentions posting to Canvas or course announcements
+        7. general - For general queries
 
-Message: {message}
+        Message: {message}
 
-Reply with either 'web_search', 'canvas_post', 'canvas_list', 'canvas_quiz', 'canvas_assignment', or 'general' only.
-Consider these in order:
-1. If the message contains 'create an assignment' or 'post assignment' -> 'canvas_assignment'
-2. If the message mentions creating a quiz or assessment -> 'canvas_quiz'
-3. If the message asks about listing courses -> 'canvas_list'
-4. If the message contains a URL or asks about web content -> 'web_search'
-5. If the message mentions posting to Canvas -> 'canvas_post'
-6. Otherwise -> 'general'
-"""
-        
+        Reply with either 'canvas_page', 'canvas_assignment', 'canvas_quiz', 'canvas_list', 'web_search', 'canvas_post', or 'general' only.
+        Consider these in order:
+        1. If the message contains 'as a page' or mentions pages -> 'canvas_page'
+        2. If the message contains 'create an assignment' -> 'canvas_assignment'
+        3. If the message mentions creating a quiz -> 'canvas_quiz'
+        4. If the message asks about listing courses -> 'canvas_list'
+        5. If the message contains a URL -> 'web_search'
+        6. If the message mentions posting to Canvas -> 'canvas_post'
+        7. Otherwise -> 'general'
+        """
+
         response = await self.llm.apredict(routing_prompt)
-        return response.strip().lower()
+        return response.strip().lower()   
+
+
 
     def _extract_title(self, message: str) -> Optional[str]:
         """Extract title from message if specified"""
@@ -103,7 +140,8 @@ Consider these in order:
             return []
         return await self.canvas_agent.list_courses()
 
-    async def process_message(self, message: str, file_content: Optional[str] = None) -> Dict[str, str]:
+
+    async def process_message(self, message: str, file_content: Optional[Dict] = None) -> Dict[str, str]:
         """Process incoming messages and route to appropriate agents"""
         try:
             # Add user message to state
@@ -114,7 +152,28 @@ Consider these in order:
                 metadata={"has_file": bool(file_content)}
             ))
 
-            # Handle quiz confirmations first
+            # Process file if present
+            if file_content:
+                file_result = await self.document_handler.process_file(
+                    file_content["file"],
+                    file_content["filename"]
+                )
+                
+                if not file_result["success"]:
+                    return {
+                        "response": f"Error processing file: {file_result.get('error', 'Unknown error')}",
+                        "agent": "document_handler",
+                        "conversation_id": id(self.state)
+                    }
+                
+                # Add file content to message metadata
+                self.state.messages[-1].metadata.update({
+                    "file_content": file_result["content"],
+                    "file_type": file_result["file_type"],
+                    "filename": file_result["filename"]
+                })
+
+            # Handle confirmations first
             lower_message = message.lower()
             if lower_message in ['yes', 'post it', 'post', 'yes post it']:
                 if self.pending_quiz:
@@ -123,30 +182,68 @@ Consider these in order:
                     return await self._handle_announcement_confirmation()
                 elif self.pending_assignment:
                     return await self._handle_assignment_confirmation()
+                elif self.pending_page:
+                    return await self._handle_page_confirmation()
 
             # Handle cancellations
             elif lower_message in ['no', 'cancel', 'dont post', "don't post"]:
                 return self._handle_cancellation()
 
-            # Get conversation context
-            context = self._get_conversation_context(message)
-            
             # Route the message
             route = await self._route_message(message)
             logger.info(f"Message routed to: {route}")
 
-            if route == "canvas_quiz":
-                response = await self._handle_quiz_request(message, context)
-            elif route == "canvas_post":
-                response = await self._handle_post_request(message, context)
-            elif route == "canvas_list":
-                response = await self._handle_list_request()
-            elif route == "canvas_assignment":
-                response = await self._handle_assignment_request(message, context)
-            elif route == "web_search":
-                response = await self._handle_web_search(message, context)
-            else:  # general route
-                response = await self._handle_general_request(message, context)
+            # Get text content if specified (moved before routing handlers)
+            text = self.state.context.get('announcement_text', 'File uploaded')
+
+            # Handle different routes
+            if route == "document_handler":
+                # Get the post type from context
+                post_type = self.state.context.get('post_type', 'announcement')
+                
+                if not file_content:
+                    return {
+                        "response": "No file was uploaded. Please upload a file and try again.",
+                        "agent": "document_handler",
+                        "conversation_id": id(self.state)
+                    }
+
+                # Create combined content with file and text
+                combined_content = {
+                    "text": text,
+                    "file_content": file_result["content"],
+                    "filename": file_result["filename"],
+                    "file_type": file_result["file_type"]
+                }
+
+                # Route to appropriate handler based on post_type
+                if post_type == 'announcement':
+                    response = await self._handle_post_request(message, combined_content)
+                elif post_type == 'page':
+                    response = await self._handle_page_request(message, combined_content)
+                elif post_type == 'assignment':
+                    response = await self._handle_assignment_request(message, combined_content)
+                elif post_type == 'quiz':
+                    response = await self._handle_quiz_request(message, combined_content)
+            else:
+                # Get conversation context for non-document routes
+                context = self._get_conversation_context(message)
+                
+                # Handle other routes
+                if route == "canvas_quiz":
+                    response = await self._handle_quiz_request(message, context)
+                elif route == "canvas_post":
+                    response = await self._handle_post_request(message, context)
+                elif route == "canvas_list":
+                    response = await self._handle_list_request()
+                elif route == "canvas_assignment":
+                    response = await self._handle_assignment_request(message, context)
+                elif route == "canvas_page":
+                    response = await self._handle_page_request(message, context)
+                elif route == "web_search":
+                    response = await self._handle_web_search(message, context)
+                else:
+                    response = await self._handle_general_request(message, context)
 
             # Store assistant response
             self.state.messages.append(Message(
@@ -161,8 +258,112 @@ Consider these in order:
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
             return {
-                "error": f"Error processing message: {str(e)}"
+                "error": f"Error processing message: {str(e)}",
+                "response": f"Error processing message: {str(e)}",
+                "agent": "error",
+                "conversation_id": id(self.state)
             }
+
+
+    async def _handle_page_confirmation(self) -> Dict[str, str]:
+        """Handle confirmation for page creation"""
+        if not self.canvas_agent:
+            return {
+                "response": "Canvas is not configured. Please provide Canvas API credentials.",
+                "agent": "canvas_page",
+                "conversation_id": id(self.state)
+            }
+
+        try:
+            result = await self.canvas_agent.process(
+                self.pending_page['content'],
+                f"page for [{self.pending_page['course_name']}] title: {self.pending_page['title']}"
+            )
+            
+            if result.get('success', False):
+                response = f"Successfully created page in {self.pending_page['course_name']}!"
+            else:
+                response = f"Failed to create page: {result.get('message', 'Unknown error')}"
+            
+            self.pending_page = None  # Clear pending page
+            
+            return {
+                "response": response,
+                "agent": "canvas_page",
+                "conversation_id": id(self.state)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error creating page: {str(e)}")
+            return {
+                "response": f"Error creating page: {str(e)}",
+                "agent": "canvas_page",
+                "conversation_id": id(self.state)
+            }
+
+
+
+    async def _handle_post_request(self, message: str, content: Union[str, Dict]) -> Dict[str, str]:
+        """Handle announcement posting requests"""
+        if not self.canvas_agent:
+            return {
+                "response": "Canvas is not configured. Please provide Canvas API credentials.",
+                "agent": "canvas_post",
+                "conversation_id": id(self.state)
+            }
+
+        course_match = re.search(r'\[(.*?)\]', message)
+        if not course_match:
+            return {
+                "response": "Please specify a course name in square brackets, e.g. [Course Name]",
+                "agent": "canvas_post",
+                "conversation_id": id(self.state)
+            }
+        
+        course_name = course_match.group(1)
+        title = self._extract_title(message)
+        
+        if not title:
+            title = await self.canvas_agent.announcement_agent.generate_title(message)
+        
+        # Handle content based on type
+        if isinstance(content, dict) and content.get("file_content"):
+            # Handle file upload case
+            file_content = content["file_content"]
+            text = content.get("text", "File uploaded")
+            self.pending_announcement = {
+                "course_name": course_name,
+                "content": text,
+                "title": title,
+                "file_content": file_content,
+                "filename": content.get("filename")
+            }
+        else:
+            # Handle regular text announcement
+            text_content = content if isinstance(content, str) else str(content)
+            self.pending_announcement = {
+                "course_name": course_name,
+                "content": text_content,
+                "title": title
+            }
+        
+        response = (
+            f"Here's the announcement for {course_name}:\n\n"
+            f"Title: {title}\n\n"
+            f"{self.pending_announcement['content']}\n\n"
+        )
+        
+        if "file_content" in self.pending_announcement:
+            response += f"File to be uploaded: {self.pending_announcement['filename']}\n\n"
+        
+        response += "Would you like me to post this announcement? (Reply with 'yes' to post or 'no' to cancel)"
+        
+        return {
+            "response": response,
+            "agent": "canvas_post",
+            "conversation_id": id(self.state)
+        }
+
 
     async def _handle_quiz_confirmation(self) -> Dict[str, str]:
         """Handle confirmation for quiz creation"""
@@ -199,6 +400,7 @@ Consider these in order:
             "conversation_id": id(self.state)
         }
 
+
     async def _handle_announcement_confirmation(self) -> Dict[str, str]:
         """Handle confirmation for announcement posting"""
         if not self.canvas_agent:
@@ -213,26 +415,47 @@ Consider these in order:
             content = self.pending_announcement['content']
             title = self.pending_announcement['title']
             
-            post_result = await self.canvas_agent.process(
-                content,
-                f"title: {title}\nannouncement for [{course_name}]"
+            # Get file content if present
+            file_content = self.pending_announcement.get('file_content')
+            file_name = self.pending_announcement.get('filename')  # This needs to be changed to 'file_name'
+            
+            if file_content and file_name:
+                # Create dictionary format for content
+                content = {
+                    'text': content,
+                    'file_content': file_content,
+                    'filename': file_name  # Match the parameter name expected by process method
+                }
+
+            # Process the announcement
+            result = await self.canvas_agent.process(
+                content=content,
+                message=f"title: {title}\nannouncement for [{course_name}]"
             )
             
-            if post_result.get('success', False):
-                response = f"Successfully posted the announcement to {course_name}!"
+            if result.get('success', False):
+                response = "Successfully posted announcement"
+                if file_content:
+                    response += " with file attachment"
+                response += f" to {course_name}!"
             else:
-                response = f"Failed to post announcement: {post_result.get('message', 'Unknown error')}"
+                response = f"Failed to post announcement: {result.get('message', 'Unknown error')}"
                 
             self.pending_announcement = None
+            
+            return {
+                "response": response,
+                "agent": "canvas_post",
+                "conversation_id": id(self.state)
+            }
                 
         except Exception as e:
-            response = f"Error posting announcement: {str(e)}"
-        
-        return {
-            "response": response,
-            "agent": "canvas_post",
-            "conversation_id": id(self.state)
-        }
+            logger.error(f"Error posting announcement: {str(e)}")
+            return {
+                "response": f"Error posting announcement: {str(e)}",
+                "agent": "canvas_post",
+                "conversation_id": id(self.state)
+            }
 
 
 
@@ -326,6 +549,13 @@ Consider these in order:
                 "agent": "canvas_assignment",
                 "conversation_id": id(self.state)
             }
+        elif self.pending_page:  # Add this block
+            self.pending_page = None
+            return {
+                "response": "Page creation cancelled.",
+                "agent": "canvas_page",
+                "conversation_id": id(self.state)
+            }
         return {
             "response": "Nothing to cancel.",
             "agent": "general",
@@ -379,52 +609,6 @@ Consider these in order:
             "conversation_id": id(self.state)
         }
 
-    async def _handle_post_request(self, message: str, context: str) -> Dict[str, str]:
-        """Handle announcement posting requests"""
-        if not self.canvas_agent:
-            return {
-                "response": "Canvas is not configured. Please provide Canvas API credentials.",
-                "agent": "canvas_post",
-                "conversation_id": id(self.state)
-            }
-
-        course_match = re.search(r'\[(.*?)\]', message)
-        if not course_match:
-            return {
-                "response": "Please specify a course name in square brackets, e.g. [Course Name]",
-                "agent": "canvas_post",
-                "conversation_id": id(self.state)
-            }
-        
-        course_name = course_match.group(1)
-        title = self._extract_title(message)
-        
-        if not title:
-            title = await self.canvas_agent.announcement_agent.generate_title(message)
-        
-        content = await self.web_agent.process(
-            message.replace(f"[{course_name}]", "").strip(),
-            conversation_context=context if context else None
-        )
-        
-        self.pending_announcement = {
-            "course_name": course_name,
-            "content": content,
-            "title": title
-        }
-        
-        response = (
-            f"Here's the announcement for {course_name}:\n\n"
-            f"Title: {title}\n\n"
-            f"{content}\n\n"
-            "Would you like me to post this announcement? (Reply with 'yes' to post or 'no' to cancel)"
-        )
-        
-        return {
-            "response": response,
-            "agent": "canvas_post",
-            "conversation_id": id(self.state)
-        }
 
     async def _handle_list_request(self) -> Dict[str, str]:
         """Handle course listing requests"""
@@ -594,6 +778,7 @@ Consider these in order:
         self.pending_announcement = None  # Clear any pending announcements
         self.pending_quiz = None  # Clear any pending quizzes
         self.pending_assignment = None  # Clear any pending assignments
+        self.pending_page = None  # Clear any pending pages - Add this line
         if self.canvas_agent:
             await self.canvas_agent.close()  # Close any existing Canvas sessions
         logger.info("Supervisor state fully reset")
@@ -604,6 +789,8 @@ Consider these in order:
             await self.web_agent.close()
         if hasattr(self, 'canvas_agent'):
             await self.canvas_agent.close()
+        if hasattr(self, 'document_handler'):
+            await self.document_handler.close()
         logger.info("All agent sessions closed")          
         
         

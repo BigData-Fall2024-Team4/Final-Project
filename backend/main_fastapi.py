@@ -5,6 +5,7 @@ import os
 from dotenv import load_dotenv
 from agents.supervisor import CanvasGPTSupervisor
 from pydantic import BaseModel
+from io import BytesIO  
 
 # Load environment variables
 load_dotenv()
@@ -56,8 +57,15 @@ async def process_message_form(
         file_content = None
         if file:
             content = await file.read()
-            if file.content_type.startswith('text/'):
-                file_content = content.decode()
+            # Create a file-like object from bytes
+            file_io = BytesIO(content)
+            file_io.name = file.filename  # Add filename attribute
+            
+            file_content = {
+                "file": file_io,        # File-like object
+                "filename": file.filename,
+                "content_type": file.content_type
+            }
 
         # Process message through supervisor
         result = await supervisor.process_message(
@@ -68,6 +76,7 @@ async def process_message_form(
         return result
 
     except Exception as e:
+        logger.error(f"Error in process_message_form: {str(e)}")
         return {"error": f"Error processing request: {str(e)}"}
 
 @app.get("/supervisor-state")
