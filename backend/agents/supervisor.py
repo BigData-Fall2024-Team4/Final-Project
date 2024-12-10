@@ -791,15 +791,4 @@ class CanvasGPTSupervisor:
             await self.canvas_agent.close()
         if hasattr(self, 'document_handler'):
             await self.document_handler.close()
-        logger.info("All agent sessions closed")          
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
-        
+        logger.info("All agent sessions closed")
