@@ -72,32 +72,32 @@ class CanvasGPTSupervisor:
         """Determine which agent should handle the message"""
         # First check explicitly for file upload before using GPT
         if "with the file uploaded" in message.lower():
-            logger.info("File upload detected, routing to document handler")
+            logger.info("File upload detected, routing to appropriate handler")
             message_lower = message.lower()
             
-            # Set post type based on message content
-            if 'to my announcement' in message_lower or 'to my announcment' in message_lower:
-                self.state.context['post_type'] = 'announcement'
+            # Updated routing logic for file uploads
+            if ('create an assignment' in message_lower or 
+                'post assignment' in message_lower or 
+                'assignment where' in message_lower):
+                self.state.context['post_type'] = 'assignment'
+                logger.info("Assignment with file upload detected")
             elif 'as a page' in message_lower:
                 self.state.context['post_type'] = 'page'
-            elif 'as an assignment' in message_lower:
-                self.state.context['post_type'] = 'assignment'
             elif 'as a quiz' in message_lower:
                 self.state.context['post_type'] = 'quiz'
             else:
-                # Default to announcement if not specified
                 self.state.context['post_type'] = 'announcement'
-                
+            
             # Extract text content if present
-            if "Text:" in message:
-                text_match = re.search(r'Text:\s*"([^"]+)"', message)
-                if text_match:
-                    self.state.context["announcement_text"] = text_match.group(1)
+            if "Assignment:" in message:
+                assignment_match = re.search(r'Assignment:(.*?)(?=$)', message, re.DOTALL)
+                if assignment_match:
+                    self.state.context["assignment_text"] = assignment_match.group(1).strip()
                     
             logger.info(f"Document handler route detected. Post type: {self.state.context.get('post_type')}")
-            return "document_handler"
-            
-        # For non-file messages, use the GPT routing
+            return self.state.context.get('post_type')
+
+        # Rest of the routing logic remains the same...
         routing_prompt = f"""
         Given the following message, determine if it requires:
         1. canvas_page - If it contains 'as a page', 'create page', or any reference to pages
@@ -109,17 +109,17 @@ class CanvasGPTSupervisor:
         7. general - For general queries
 
         Message: {message}
-
-        Reply with either 'canvas_page', 'canvas_assignment', 'canvas_quiz', 'canvas_list', 'web_search', 'canvas_post', or 'general' only.
-        Consider these in order:
-        1. If the message contains 'as a page' or mentions pages -> 'canvas_page'
-        2. If the message contains 'create an assignment' -> 'canvas_assignment'
-        3. If the message mentions creating a quiz -> 'canvas_quiz'
-        4. If the message asks about listing courses -> 'canvas_list'
-        5. If the message contains a URL -> 'web_search'
-        6. If the message mentions posting to Canvas -> 'canvas_post'
-        7. Otherwise -> 'general'
-        """
+        
+            Reply with either 'canvas_page', 'canvas_assignment', 'canvas_quiz', 'canvas_list', 'web_search', 'canvas_post', or 'general' only.
+            Consider these in order:
+            1. If the message contains 'as a page' or mentions pages -> 'canvas_page'
+            2. If the message contains 'create an assignment' -> 'canvas_assignment'
+            3. If the message mentions creating a quiz -> 'canvas_quiz'
+            4. If the message asks about listing courses -> 'canvas_list'
+            5. If the message contains a URL -> 'web_search'
+            6. If the message mentions posting to Canvas -> 'canvas_post'
+            7. Otherwise -> 'general'
+            """
 
         response = await self.llm.apredict(routing_prompt)
         return response.strip().lower()   
@@ -153,6 +153,7 @@ class CanvasGPTSupervisor:
             ))
 
             # Process file if present
+            file_result = None
             if file_content:
                 file_result = await self.document_handler.process_file(
                     file_content["file"],
@@ -193,43 +194,59 @@ class CanvasGPTSupervisor:
             route = await self._route_message(message)
             logger.info(f"Message routed to: {route}")
 
-            # Get text content if specified (moved before routing handlers)
-            text = self.state.context.get('announcement_text', 'File uploaded')
-
-            # Handle different routes
-            if route == "document_handler":
-                # Get the post type from context
-                post_type = self.state.context.get('post_type', 'announcement')
-                
-                if not file_content:
-                    return {
-                        "response": "No file was uploaded. Please upload a file and try again.",
-                        "agent": "document_handler",
-                        "conversation_id": id(self.state)
-                    }
-
-                # Create combined content with file and text
-                combined_content = {
-                    "text": text,
-                    "file_content": file_result["content"],
-                    "filename": file_result["filename"],
-                    "file_type": file_result["file_type"]
-                }
-
-                # Route to appropriate handler based on post_type
-                if post_type == 'announcement':
-                    response = await self._handle_post_request(message, combined_content)
-                elif post_type == 'page':
-                    response = await self._handle_page_request(message, combined_content)
-                elif post_type == 'assignment':
-                    response = await self._handle_assignment_request(message, combined_content)
-                elif post_type == 'quiz':
-                    response = await self._handle_quiz_request(message, combined_content)
-            else:
-                # Get conversation context for non-document routes
+            # Handle different routes based on message type and content
+            try:
+                # Initialize context
                 context = self._get_conversation_context(message)
-                
-                # Handle other routes
+
+                # Handle file upload cases first
+                if file_content:
+                    if route == "assignment":
+                        logger.info("Processing assignment with file upload")
+                        return await self._handle_assignment_request(
+                            message,
+                            {
+                                "text": self.state.context.get("assignment_text", ""),
+                                "file_content": file_result["content"],
+                                "filename": file_result["filename"],
+                                "file_type": file_result["file_type"]
+                            }
+                        )
+                    elif route == "page":
+                        logger.info("Processing page with file upload")
+                        return await self._handle_page_request(
+                            message,
+                            {
+                                "text": self.state.context.get("page_text", ""),
+                                "file_content": file_result["content"],
+                                "filename": file_result["filename"],
+                                "file_type": file_result["file_type"]
+                            }
+                        )
+                    elif route == "quiz":
+                        logger.info("Processing quiz with file upload")
+                        return await self._handle_quiz_request(
+                            message,
+                            {
+                                "text": self.state.context.get("quiz_text", ""),
+                                "file_content": file_result["content"],
+                                "filename": file_result["filename"],
+                                "file_type": file_result["file_type"]
+                            }
+                        )
+                    else:  # Default to announcement
+                        logger.info("Processing announcement with file upload")
+                        return await self._handle_post_request(
+                            message,
+                            {
+                                "text": self.state.context.get("announcement_text", "File uploaded"),
+                                "file_content": file_result["content"],
+                                "filename": file_result["filename"],
+                                "file_type": file_result["file_type"]
+                            }
+                        )
+
+                # Handle non-file cases
                 if route == "canvas_quiz":
                     response = await self._handle_quiz_request(message, context)
                 elif route == "canvas_post":
@@ -245,15 +262,19 @@ class CanvasGPTSupervisor:
                 else:
                     response = await self._handle_general_request(message, context)
 
-            # Store assistant response
-            self.state.messages.append(Message(
-                content=response["response"],
-                type="text",
-                role="assistant",
-                metadata={"agent": route}
-            ))
-            
-            return response
+                # Store assistant response
+                self.state.messages.append(Message(
+                    content=response["response"],
+                    type="text",
+                    role="assistant",
+                    metadata={"agent": route}
+                ))
+                
+                return response
+
+            except Exception as e:
+                logger.error(f"Error in route handling: {str(e)}")
+                raise  # Re-raise to be caught by outer try-except
 
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
@@ -263,8 +284,9 @@ class CanvasGPTSupervisor:
                 "agent": "error",
                 "conversation_id": id(self.state)
             }
-
-
+        
+        
+        
     async def _handle_page_confirmation(self) -> Dict[str, str]:
         """Handle confirmation for page creation"""
         if not self.canvas_agent:
@@ -460,7 +482,7 @@ class CanvasGPTSupervisor:
 
 
     async def _handle_assignment_confirmation(self) -> Dict[str, str]:
-        """Handle confirmation for assignment creation"""
+        """Handle confirmation for assignment creation with file upload support"""
         if not self.canvas_agent:
             return {
                 "response": "Canvas is not configured. Please provide Canvas API credentials.",
@@ -469,6 +491,7 @@ class CanvasGPTSupervisor:
             }
 
         try:
+            # Get course ID
             course_id = await self.canvas_agent.get_course_id(self.pending_assignment['course_name'])
             if not course_id:
                 return {
@@ -477,34 +500,33 @@ class CanvasGPTSupervisor:
                     "conversation_id": id(self.state)
                 }
             
-            # Format due date without automatic unlock/lock dates
-            due_date = self.pending_assignment['due_date']
+            # If we have a file, use the new process_file_and_create_assignment method
+            if "file_content" in self.pending_assignment:
+                result = await self.canvas_agent.assignment_agent.process_file_and_create_assignment(
+                    course_id=course_id,
+                    file_content=self.pending_assignment['file_content'],
+                    file_name=self.pending_assignment['file_name'],
+                    title=self.pending_assignment['title'],
+                    description=self.pending_assignment['content'],
+                    points=self.pending_assignment['points'],
+                    submission_types=self.pending_assignment['submission_types']
+                )
+            else:
+                # Regular assignment creation without file
+                result = await self.canvas_agent.assignment_agent.create_assignment(
+                    course_id=course_id,
+                    name=self.pending_assignment['title'],
+                    description=self.pending_assignment['content'],
+                    points=self.pending_assignment['points'],
+                    submission_types=self.pending_assignment['submission_types']
+                )
             
-            assignment_data = {
-                "course_id": course_id,
-                "name": self.pending_assignment['title'],
-                "description": self.pending_assignment['content'],
-                "points": self.pending_assignment['points'],
-                "due_date": due_date,
-                "submission_types": self.pending_assignment['submission_types']
-            }
-
-            # Log the assignment data for debugging
-            logger.info(f"Creating assignment with data: {json.dumps(assignment_data, indent=2)}")
-            
-            result = await self.canvas_agent.assignment_agent.create_assignment(
-                course_id=course_id,
-                name=self.pending_assignment['title'],
-                description=self.pending_assignment['content'],
-                points=self.pending_assignment['points'],
-                due_date=due_date,
-                submission_types=self.pending_assignment['submission_types']
-            )
-            
-            if 'error' in result:
+            if result.get("error"):
                 response = f"Failed to create assignment: {result['error']}"
             else:
                 response = f"Successfully created assignment in {self.pending_assignment['course_name']}!"
+                if "file_url" in result:
+                    response += f"\nFile uploaded and attached to the assignment."
             
             self.pending_assignment = None
             
@@ -512,7 +534,7 @@ class CanvasGPTSupervisor:
                 "response": response,
                 "agent": "canvas_assignment",
                 "conversation_id": id(self.state),
-                "success": 'error' not in response.lower()
+                "success": "error" not in result
             }
             
         except Exception as e:
@@ -522,8 +544,7 @@ class CanvasGPTSupervisor:
                 "agent": "canvas_assignment",
                 "conversation_id": id(self.state),
                 "success": False
-            }
-        
+            }        
         
 
     def _handle_cancellation(self) -> Dict[str, str]:
@@ -636,8 +657,8 @@ class CanvasGPTSupervisor:
             "conversation_id": id(self.state)
         }
 
-    async def _handle_assignment_request(self, message: str, context: str) -> Dict[str, str]:
-        """Handle assignment creation requests"""
+    async def _handle_assignment_request(self, message: str, content: Union[str, Dict]) -> Dict[str, str]:
+        """Handle assignment creation requests with file upload support"""
         if not self.canvas_agent:
             return {
                 "response": "Canvas is not configured. Please provide Canvas API credentials.",
@@ -645,7 +666,7 @@ class CanvasGPTSupervisor:
                 "conversation_id": id(self.state)
             }
 
-        # Extract course name from square brackets
+        # Extract course name
         course_match = re.search(r'\[(.*?)\]', message)
         if not course_match:
             return {
@@ -656,11 +677,20 @@ class CanvasGPTSupervisor:
         
         course_name = course_match.group(1)
         
-        # Extract metadata with more precise patterns
-        title_match = re.search(r'title:\s*([^\n]+)', message)
+        # Extract metadata
+        title = self._extract_title(message) or "Assignment"
         points_match = re.search(r'points\s*should\s*be\s*(\d+)', message)
-        submission_match = re.search(r'submission\s*type\s*should\s*be\s*(\w+(?:\s+\w+)*)', message)
-        due_date_match = re.search(r'due\s*date\s*should\s*be\s*(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}\s*(?:AM|PM))', message, re.IGNORECASE)
+        points = int(points_match.group(1)) if points_match else 100
+        
+        # Extract submission types
+        submission_types = ["online_text_entry"]  # default
+        if "submission type should be" in message.lower():
+            if "text entry" in message.lower():
+                submission_types = ["online_text_entry"]
+            elif "file upload" in message.lower():
+                submission_types = ["online_upload"]
+            elif "url" in message.lower():
+                submission_types = ["online_url"]
         
         # Extract assignment content
         assignment_match = re.search(r'Assignment:(.*?)(?=$)', message, re.DOTALL)
@@ -673,54 +703,46 @@ class CanvasGPTSupervisor:
 
         assignment_content = assignment_match.group(1).strip()
 
-        # Process due date if present
-        formatted_date = None
-        original_due_date = None
-        if due_date_match:
-            try:
-                due_date = due_date_match.group(1)
-                # Parse the date string
-                dt = datetime.strptime(due_date, "%m/%d/%Y %I:%M %p")
-                # Convert to UTC and format for Canvas
-                formatted_date = dt.replace(tzinfo=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-                original_due_date = due_date
-                logger.info(f"Successfully parsed due date: {formatted_date}")
-            except ValueError as e:
-                logger.error(f"Date parsing error: {str(e)}")
-                formatted_date = None
-                original_due_date = None
-
-        # Determine submission types
-        submission_types = ["online_url"] if submission_match and "url" in submission_match.group(1).lower() else ["online_text_entry"]
-
-        # Store as pending assignment
-        self.pending_assignment = {
-            "course_name": course_name,
-            "content": assignment_content,
-            "title": title_match.group(1).strip() if title_match else "Assignment",
-            "points": int(points_match.group(1)) if points_match else 100,
-            "due_date": formatted_date,
-            "original_due_date": original_due_date,
-            "submission_types": submission_types
-        }
-
-        # Log the pending assignment for debugging
-        logger.info(f"Created pending assignment: {json.dumps(self.pending_assignment, indent=2)}")
+        # Handle file content if present
+        if isinstance(content, dict) and content.get("file_content"):
+            file_content = content["file_content"]
+            file_name = content.get("filename", "uploaded_file")
+            
+            # Store as pending assignment with file
+            self.pending_assignment = {
+                "course_name": course_name,
+                "content": assignment_content,
+                "title": title,
+                "points": points,
+                "submission_types": submission_types,
+                "file_content": file_content,
+                "file_name": file_name
+            }
+        else:
+            # Store as pending assignment without file
+            self.pending_assignment = {
+                "course_name": course_name,
+                "content": assignment_content,
+                "title": title,
+                "points": points,
+                "submission_types": submission_types
+            }
         
         # Create response message
         response_parts = [
-            f"I've prepared the assignment for {course_name}:\n",
-            f"Title: {self.pending_assignment['title']}",
-            f"Points: {self.pending_assignment['points']}",
-            f"Submission Types: {', '.join(self.pending_assignment['submission_types'])}",
-            f"Due Date: {self.pending_assignment['original_due_date'] or 'No due date set'}\n",
-            "Would you like me to create this assignment? (Reply with 'yes' to create or 'no' to cancel)"
+            f"I've prepared the assignment for {course_name}:",
+            f"Title: {title}",
+            f"Points: {points}",
+            f"Submission Types: {', '.join(submission_types)}",
         ]
         
-        response = "\n".join(response_parts)
+        if "file_name" in self.pending_assignment:
+            response_parts.append(f"File to be attached: {self.pending_assignment['file_name']}")
+        
+        response_parts.append("\nWould you like me to create this assignment? (Reply with 'yes' to create or 'no' to cancel)")
         
         return {
-            "response": response,
+            "response": "\n".join(response_parts),
             "agent": "canvas_assignment",
             "conversation_id": id(self.state)
         }

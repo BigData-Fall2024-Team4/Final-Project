@@ -205,7 +205,58 @@ class AssignmentAgent(CanvasBaseAgent):
             logger.error(f"Error parsing date: {str(e)}")
             return None
 
+    async def process_file_and_create_assignment(self, course_id: str, file_content: bytes, file_name: str, 
+                                               title: str, description: str, points: int = 100, 
+                                               submission_types: List[str] = None) -> Dict[str, Any]:
+            """First upload file to Canvas and then create assignment with file URL"""
+            try:
+                # Ensure session is initialized
+                await self._ensure_session()
 
+                # Step 1: Upload file to course files
+                logger.info(f"Uploading file {file_name} to course {course_id}")
+                file_url = await self.upload_file(course_id, file_content, file_name)
+                
+                if not file_url:
+                    return {
+                        "error": "Failed to upload file",
+                        "success": False
+                    }
+
+                # Step 2: Format description with file link
+                formatted_description = f"""
+                {description}
+                
+                <p>Reference Material: <a href="{file_url}" target="_blank">{file_name}</a></p>
+                """
+
+                # Step 3: Create assignment with file reference
+                assignment_result = await self.create_assignment(
+                    course_id=course_id,
+                    name=title,
+                    description=formatted_description,
+                    points=points,
+                    submission_types=submission_types or ["online_text_entry"]
+                )
+
+                if "error" in assignment_result:
+                    return {
+                        "error": assignment_result["error"],
+                        "success": False
+                    }
+
+                return {
+                    "success": True,
+                    "assignment": assignment_result,
+                    "file_url": file_url
+                }
+
+            except Exception as e:
+                logger.error(f"Error in process_file_and_create_assignment: {str(e)}")
+                return {
+                    "error": str(e),
+                    "success": False
+                }
 
     async def upload_file(self, course_id: str, file_content: bytes, file_name: str) -> Optional[str]:
         """Upload a file to Canvas course files and return the file URL"""
