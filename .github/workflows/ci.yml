@@ -32,4 +32,4 @@ jobs:
 
     - name: Run tests
       run: |
-        poetry run pytest tests/ -v
+        poetry run pytest test_cases/ -v
