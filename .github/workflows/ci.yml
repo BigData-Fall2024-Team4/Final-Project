@@ -24,12 +24,15 @@ jobs:
         
     - name: Configure Poetry
       run: |
+        cd backend
         poetry config virtualenvs.create false
         
     - name: Install dependencies
       run: |
+        cd backend
         poetry install
 
     - name: Run tests
       run: |
-        poetry run pytest test_cases/ -v
+        cd backend
+        poetry run pytest tests/ -v
