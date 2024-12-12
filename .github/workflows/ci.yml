@@ -35,4 +35,4 @@ jobs:
 
     - name: Run tests
       run: |
-        poetry run pytest backend/test_cases/test_webagent.py -v
+        poetry run pytest test_cases/test_webagent.py -v
