@@ -1,4 +1,4 @@
-from typing import Dict, Any, Optional, Tuple
+from typing import Dict, Any, Optional
 import aiohttp
 import logging
 import re
@@ -15,84 +15,49 @@ class PagesAgent(CanvasBaseAgent):
         super().__init__(api_key, base_url)
         self.llm = ChatOpenAI()
 
-    async def _extract_content_with_llm(self, message: str) -> Dict[str, Any]:
-        """
-        Use LLM to extract title, text content, and determine content type
-        """
-        extraction_prompt = f"""Extract the following information from this message and remove any quotes from the text content:
+    async def _format_content(self, content: str) -> str:
+        """Format content into HTML with LLM assistance"""
+        format_prompt = f"""Format this text into clean HTML for a Canvas page.
+        Use semantic HTML elements (p, ul, ol, etc.) as appropriate.
+        Keep the formatting simple and clean.
+        If the content appears to be plain text, wrap it in paragraph tags.
 
-        From this message: {message}
+        Original Text: {content}
 
-        1. If there's a title (after 'title:'), extract it
-        2. If there's text content (after 'Text:'), extract ONLY the content itself, removing any quotes
-        3. If there's a link (after 'link:'), extract it
-        4. Extract the course name (text in square brackets)
-
-        Return a clean JSON with these fields:
-        {{
-            "title": "extracted title or empty string",
-            "text_content": "extracted text without quotes or empty string",
-            "link": "extracted link or empty string",
-            "course": "extracted course name without brackets or empty string",
-            "content_type": "text" or "link"
-        }}
-
-        For example, if the input has 'Text:"Hello World"', the text_content should just be 'Hello World'
-        """
-
-        try:
-            extracted_raw = await self.llm.apredict(extraction_prompt)
-            extracted = eval(extracted_raw)
-            
-            # Additional cleanup for text content
-            if extracted.get('text_content'):
-                # Remove any remaining quotes
-                extracted['text_content'] = extracted['text_content'].strip('"\'')
-            
-            logger.info(f"LLM extracted content: {extracted}")
-            return extracted
-        except Exception as e:
-            logger.error(f"Error extracting content with LLM: {str(e)}")
-            # Fallback to basic extraction
-            return {
-                "title": "",
-                "text_content": "",
-                "link": "",
-                "course": "",
-                "content_type": "text"
-            }
-
-    async def _format_content_with_llm(self, content: str, content_type: str) -> str:
-        """
-        Use LLM to format content into appropriate HTML
-        """
-        format_prompt = f"""Format this content into clean HTML for a Canvas page.
-        Use appropriate semantic HTML elements (p, ul, ol, etc.).
-        Add structure while preserving the content's meaning.
-
-        Content Type: {content_type}
-        Content: {content}
-
-        Return only the formatted HTML without any explanation."""
+        Return only the formatted HTML without any explanation or original text."""
 
         try:
             formatted_content = await self.llm.apredict(format_prompt)
-            # Ensure there's at least a paragraph wrapper
+            # Ensure content has HTML wrapper
             if not formatted_content.strip().startswith('<'):
                 formatted_content = f"<p>{formatted_content}</p>"
-            logger.info(f"LLM formatted content: {formatted_content}")
+            logger.info(f"Formatted content: {formatted_content}")
             return formatted_content
         except Exception as e:
-            logger.error(f"Error formatting with LLM: {str(e)}")
-            # Fallback to basic formatting
+            logger.error(f"Error formatting content with LLM: {str(e)}")
+            # Fallback to basic HTML formatting
             return f"<p>{html.escape(content)}</p>"
+
+    def _clean_content(self, content: str) -> str:
+        """Clean and prepare content for formatting"""
+        try:
+            # Remove Text: marker if present
+            content = re.sub(r'^Text:\s*', '', content, flags=re.IGNORECASE)
+            # Remove surrounding quotes if present
+            content = content.strip('"\'')
+            # Clean up whitespace
+            content = content.strip()
+            logger.info(f"Cleaned content: {content}")
+            return content
+        except Exception as e:
+            logger.error(f"Error cleaning content: {str(e)}")
+            return content
 
     async def create_page(
         self,
         course_id: str,
         title: str,
         body: str,
-        content_type: str = None,
         published: bool = True,
         editing_roles: str = "teachers"
     ) -> Dict[str, Any]:
@@ -106,23 +71,23 @@ class PagesAgent(CanvasBaseAgent):
                     'message': "Title cannot be blank"
                 }
             
-            endpoint = f"{self.base_url}/api/v1/courses/{course_id}/pages"
+            # Clean and format the content
+            cleaned_body = self._clean_content(body)
+            formatted_body = await self._format_content(cleaned_body)
             
-            logger.info(f"Creating page in course {course_id}")
-            logger.info(f"Title: {title}")
-            logger.info(f"Content Type: {content_type}")
+            endpoint = f"{self.base_url}/api/v1/courses/{course_id}/pages"
             
             page_data = {
                 "wiki_page": {
                     "title": title.strip(),
-                    "body": body,
+                    "body": formatted_body,
                     "editing_roles": editing_roles,
                     "published": published,
                     "notify_of_update": False
                 }
             }
             
-            logger.info(f"Request data: {page_data}")
+            logger.info(f"Creating page with data: {page_data}")
             
             async with self.session.post(
                 endpoint,
@@ -158,18 +123,17 @@ class PagesAgent(CanvasBaseAgent):
             }
 
     async def process_page_request(self, content: str, message: str) -> Dict[str, Any]:
-        """Process a page creation request using LLM for extraction and formatting"""
+        """Process a page creation request"""
         try:
-            # Use LLM to extract content and metadata
-            extracted = await self._extract_content_with_llm(message)
-            
-            if not extracted.get('course'):
+            # Extract course name
+            course_match = re.search(r'\[(.*?)\]', message)
+            if not course_match:
                 return {
                     'success': False,
                     'message': "Please specify a course name in square brackets, e.g. [Course Name]"
                 }
-                
-            course_name = extracted['course']
+            
+            course_name = course_match.group(1)
             course_id = await self.get_course_id(course_name)
             
             if not course_id:
@@ -178,26 +142,39 @@ class PagesAgent(CanvasBaseAgent):
                     'message': f"Could not find course: {course_name}"
                 }
             
-            # Use extracted content or fallbacks
-            title = extracted.get('title') or "New Page"
-            content_to_format = extracted.get('text_content') or extracted.get('link') or content
-            content_type = extracted.get('content_type', 'text')
+            # Extract title
+            title = None
+            title_match = re.search(r'title:\s*([^\n]+)', message, re.IGNORECASE)
+            if title_match:
+                title = title_match.group(1).strip()
             
-            # Use LLM to format the content
-            formatted_content = await self._format_content_with_llm(content_to_format, content_type)
+            # Extract text content if present
+            text_match = re.search(r'Text:\s*"([^"]+)"', message) or \
+                        re.search(r'Text:\s*\'([^\']+)\'', message) or \
+                        re.search(r'Text:\s*([^\n]+)', message)
+            
+            if text_match:
+                content = text_match.group(1)
+            
+            if not content:
+                return {
+                    'success': False,
+                    'message': "No content provided for the page"
+                }
+            
+            if not title:
+                title = "New Page"
             
             logger.info(f"Processing page request:")
             logger.info(f"Course: {course_name}")
             logger.info(f"Title: {title}")
-            logger.info(f"Content Type: {content_type}")
-            logger.info(f"Formatted Content: {formatted_content}")
+            logger.info(f"Content: {content}")
             
             # Create the page
             result = await self.create_page(
                 course_id=course_id,
                 title=title,
-                body=formatted_content,
-                content_type=content_type,
+                body=content,
                 published=True
             )
             
