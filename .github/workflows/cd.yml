@@ -16,10 +16,13 @@ jobs:
           host: ${{ secrets.VM_HOST }}
           username: ${{ secrets.VM_USERNAME }}
           key: ${{ secrets.VM_SSH_KEY }}
+          port: 22
+          debug: true
           script: |
             # Pull latest changes
             cd ~/Final-Project
-            git pull origin main
+            git fetch --all
+            git reset --hard origin/main
 
             # Deploy Airflow
             echo "Deploying Airflow..."
