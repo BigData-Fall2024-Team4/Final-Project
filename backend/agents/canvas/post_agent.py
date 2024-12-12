@@ -35,54 +35,61 @@ class CanvasPostAgent:
         try:
             questions = []
             # Split into questions (now handling repeated question numbers)
+            content = content.replace("Questions:", "", 1)  # Remove "Questions:" only once
             question_blocks = re.split(r'\d+\.\s+', content)
             question_blocks = [q.strip() for q in question_blocks if q.strip()]
 
             for block in question_blocks:
                 try:
                     # Extract question text
-                    question_parts = block.split('A.')
-                    if not question_parts:
-                        continue
-                    question_text = question_parts[0].strip()
-
-                    # Extract options
-                    options_text = 'A.' + 'A.'.join(question_parts[1:])
+                    question_text = block
                     options = []
+                    correct_letter = None
+                    points = 1  # default points
                     
-                    # Extract each option
-                    for letter in ['A', 'B', 'C', 'D']:
-                        pattern = fr'{letter}\.\s*([^A-D\(]+)'
-                        match = re.search(pattern, options_text)
-                        if match:
-                            option_text = match.group(1).strip()
-                            options.append((letter, option_text))
-
-                    # Extract correct answer
-                    correct_match = re.search(r'\(Correct Answer:\s*([A-D])\)', block)
-                    if not correct_match:
-                        continue
+                    # Extract options
+                    if 'Options:' in block:
+                        question_text = block.split('Options:')[0].strip()
+                        options_text = block.split('Options:')[1]
                         
-                    correct_letter = correct_match.group(1)
+                        # Extract each option
+                        for letter in ['A', 'B', 'C', 'D']:
+                            pattern = fr'{letter}\.\s*([^A-D\(\n]+)'
+                            match = re.search(pattern, options_text)
+                            if match:
+                                option_text = match.group(1).strip()
+                                options.append((letter, option_text))
 
-                    # Format for Canvas
-                    canvas_answers = []
-                    for letter, text in options:
-                        canvas_answers.append({
-                            "text": text,
-                            "weight": 100 if letter == correct_letter else 0
+                        # Extract correct answer
+                        correct_match = re.search(r'\(Correct Answer:\s*([A-D])\)', block)
+                        if correct_match:
+                            correct_letter = correct_match.group(1)
+
+                        # Extract points if available
+                        points_match = re.search(r'Points:\s*(\d+)', block)
+                        if points_match:
+                            points = int(points_match.group(1))
+
+                    # Only add question if we have options and a correct answer
+                    if options and correct_letter:
+                        # Format for Canvas
+                        canvas_answers = [
+                            {
+                                "text": text,
+                                "weight": 100 if letter == correct_letter else 0
+                            }
+                            for letter, text in options
+                        ]
+
+                        questions.append({
+                            "question_name": question_text[:50],
+                            "question_text": question_text,
+                            "question_type": "multiple_choice_question",
+                            "points_possible": points,
+                            "answers": canvas_answers,
+                            "correct_comments": f"Correct! The answer is {correct_letter}.",
+                            "incorrect_comments": "Please review the material and try again."
                         })
-
-                    # Create question dictionary
-                    question_dict = {
-                        "question_name": question_text[:50],  # Canvas title length limit
-                        "question_text": question_text,
-                        "question_type": "multiple_choice_question",
-                        "points_possible": 1,
-                        "answers": canvas_answers
-                    }
-                    
-                    questions.append(question_dict)
 
                 except Exception as e:
                     logger.error(f"Error parsing question block: {str(e)}")
@@ -106,35 +113,48 @@ class CanvasPostAgent:
                     "message": "No valid questions could be parsed from the content"
                 }
 
-            # Create quiz
+            # Create quiz with default time limit
             quiz = await self.quiz_agent.create_quiz(
                 course_id=course_id,
                 title=title,
                 description="Quiz with provided questions",
                 quiz_type='assignment',
-                time_limit=30,
-                points_possible=len(questions)
+                time_limit=30,  # Set default time limit
+                points_possible=len(questions),
+                published=False  # Set to false initially
             )
             
-            if 'error' in quiz:
+            if isinstance(quiz, dict) and quiz.get('error'):
                 return {
                     "success": False,
                     "message": f"Error creating quiz: {quiz['error']}"
                 }
             
+            if not quiz or not isinstance(quiz, dict) or 'id' not in quiz:
+                return {
+                    "success": False,
+                    "message": "Failed to create quiz: Invalid response from Canvas"
+                }
+            
             # Add questions
             quiz_id = quiz['id']
+            question_results = []
             for question in questions:
                 result = await self.quiz_agent.add_question(course_id, quiz_id, question)
-                if 'error' in result:
+                question_results.append(result)
+                if isinstance(result, dict) and result.get('error'):
                     logger.error(f"Error adding question: {result['error']}")
-                    # Continue with other questions even if one fails
+            
+            # Publish the quiz
+            publish_result = await self.quiz_agent.publish_quiz(course_id, quiz_id)
             
             return {
                 "success": True,
                 "message": f"Successfully created quiz with {len(questions)} questions",
                 "quiz_id": quiz_id,
-                "question_count": len(questions)
+                "question_count": len(questions),
+                "question_results": question_results,
+                "publish_result": publish_result
             }
 
         except Exception as e:

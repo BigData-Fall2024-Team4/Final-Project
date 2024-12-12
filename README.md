@@ -110,8 +110,95 @@ The system is deployed on **Google Cloud Platform (GCP)**, using Docker for cont
 - **GitLab**: We plan to leverage GitHub Actions to implement CI/CD pipeline for our project. This setup will automate essential tasks such as deployment, dependency management, and initial testing whenever changes are pushed to the frontend (Chrome extension) or backend (FastAPI) repositories. Additionally, it will facilitate deployments to our GCP instance using Docker, ensuring updated code, rebuilt images. By automating these processes, we aim to maintain system stability, and accelerate feature updates for the CanvasGPT system.
 
 
+## Pre-Requisite
+
+**Sign Up as Teacher on Canvas**
+If you want to create a canvas account for Teacher please follow this:[Sign Up for Canvas LMS as Teacher](https://community.canvaslms.com/t5/Instructor-Guide/How-do-I-sign-up-for-a-new-Free-for-Teacher-Canvas-account-as-an/ta-p/894)
+
+
 **Generate Token on Canvas LMS API**
 Please follow the detail intrction on how can one generate a token on CANVAS LMS: [Generate Token for CANVAS LMS](https://community.canvaslms.com/t5/Canvas-Basics-Guide/How-do-I-manage-API-access-tokens-in-my-user-account/ta-p/615312)
+
+
+
+## Local Development Setup
+
+1. **Clone the Repository**
+```bash
+git clone https://github.com/BigData-Fall2024-Team4/Final-Project.git
+cd Final-Project
+```
+
+2. **Environment Configuration**
+```bash
+cd backend
+cp .env.example .env
+```
+
+Update your `.env` file with the following configurations:
+
+```bash
+# PostgreSQL Connection Details
+OPENAI_API_KEY=''  # Your OPENAI_API_KEY key
+
+# AWS Configuration
+AWS_ACCESS_KEY_ID=''          # Your AWS Access Key ID for authentication
+AWS_SECRET_ACCESS_KEY=''      # Your AWS Secret Access Key for authentication
+S3_BUCKET_NAME=''             # Name of your S3 bucket
+S3_BOOKS_FOLDER=''            # Folder path within the S3 bucket for storing books
+
+# Vector Database Configuration
+PINECONE_API_KEY=''           # Your Pinecone API Key for authentication
+PINECONE_ENVIRONMENT=''       # Your Pinecone environment (e.g., us-west1-gcp)
+PINECONE_INDEX_NAME=''        # Name of the Pinecone index to use
+
+
+# Canvas LMS API 
+CANVAS_API_KEY=''            # Your Canvas API Key for authentication
+CANVAS_BASE_URL=''           # Base URL of your Canvas instance (e.g., https://yourinstitution.instructure.com)
+
+# Note: To obtain CANVAS_API_KEY and configure CANVAS_BASE_URL:
+# 1. Log in to your Canvas instance (e.g., your institution's Canvas platform).
+# 2. Go to "Account" -> "Settings" in the top-right menu.
+# 3. Scroll down to "Approved Integrations" and click "New Access Token."
+# 4. Enter a name and expiration date for the token, then click "Generate Token."
+# 5. Copy the generated token (this will be your CANVAS_API_KEY) and store it securely.
+# 6. Use the base URL of your Canvas instance (e.g., https://yourinstitution.instructure.com) as CANVAS_BASE_URL.
+
+```
+
+
+3. **Docker Setup**
+```bash
+# Build and start all services
+docker-compose up --build
+
+# To stop services
+docker-compose down
+```
+
+5. **Chrome Extension Setup**:
+   - Open Chrome, go to `chrome://extensions/`, and enable **Developer mode**.
+   - Click on **Load unpacked** and select the `chrome_extension` directory from this repository.
+   - Once loaded, the extension will be active. Visit a company website to see if the extension displays application information.
+
+## Production Deployment
+
+The system is deployed on AWS with the following components:
+- Dockerized FastAPI and Prefect running on GCP instances
+- Automated deployments via GitHub Actions
+
+### Deployment Process
+1. Push changes to develop branch
+2. GitHub Actions automatically:
+   - Runs tests
+   - Builds Docker images
+   - Deploys to GCP
+   - Updates containers
+   - Performs health checks
+
+
+
 
 ### Additional Notes
 WE ATTEST THAT WE HAVEN’T USED ANY OTHER STUDENTS’ WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK. 
