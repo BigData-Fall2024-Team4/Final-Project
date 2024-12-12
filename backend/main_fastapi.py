@@ -29,7 +29,11 @@ class QueryRequest(BaseModel):
 supervisor = CanvasGPTSupervisor(
     openai_api_key=os.getenv("OPENAI_API_KEY"),
     canvas_api_key=os.getenv("CANVAS_API_KEY"),
-    canvas_base_url=os.getenv("CANVAS_BASE_URL")
+    canvas_base_url=os.getenv("CANVAS_BASE_URL"),
+    aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
+    aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
+    s3_bucket_name=os.getenv("S3_BUCKET_NAME"),
+    s3_books_folder=os.getenv("S3_BOOKS_FOLDER")
 )
 @app.post("/agent-workflow")
 async def process_message(
@@ -46,6 +50,35 @@ async def process_message(
 
     except Exception as e:
         return {"error": f"Error processing request: {str(e)}"}
+@app.get("/test-pdf-listing")
+async def test_pdf_listing():
+    """Test S3 PDF listing configuration"""
+    try:
+        if not supervisor.pdf_listing_agent:
+            return {
+                "success": False,
+                "error": "PDF listing agent not configured",
+                "details": {
+                    "aws_key_set": bool(os.getenv("AWS_ACCESS_KEY_ID")),
+                    "aws_secret_set": bool(os.getenv("AWS_SECRET_ACCESS_KEY")),
+                    "bucket_name_set": bool(os.getenv("S3_BUCKET_NAME"))
+                }
+            }
+        
+        result = await supervisor.pdf_listing_agent.list_pdfs()
+        return {
+            "success": True,
+            "pdf_count": result["total_pdfs"],
+            "bucket_name": supervisor.pdf_listing_agent.bucket_name
+        }
+        
+    except Exception as e:
+        logger.error(f"Error testing PDF listing: {str(e)}")
+        return {
+            "success": False,
+            "error": str(e)
+        }
+
 
 @app.post("/agent-workflow/form")
 async def process_message_form(
