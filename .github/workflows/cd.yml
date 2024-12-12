@@ -2,7 +2,7 @@ name: Continuous Deployment
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, data-ingestion ]
   pull_request:
     branches: [ main ]
 

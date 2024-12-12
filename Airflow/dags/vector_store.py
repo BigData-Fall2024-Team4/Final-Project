@@ -48,7 +48,7 @@ class NVIDIAEmbeddings:
         return response.data[0].embedding
 
 def download_book_files_from_s3(**context):
-    """Task to download book.txt files from S3 bucket output folders."""
+    """Task to download first 3 book.txt files from S3 bucket output folders."""
     s3_client = boto3.client(
         "s3",
         aws_access_key_id=AWS_ACCESS_KEY_ID,
@@ -59,40 +59,67 @@ def download_book_files_from_s3(**context):
     local_dir = Path("/tmp/books")
     local_dir.mkdir(parents=True, exist_ok=True)
     
-    # List all folders in the bucket
-    response = s3_client.list_objects_v2(Bucket=AWS_BUCKET_NAME, Delimiter='/')
+    # First, list book folders under springer_books/
     book_files = []
     
-    for prefix in response.get('CommonPrefixes', []):
-        folder_path = prefix.get('Prefix')
-        # Check for book.txt in output folder
-        output_path = f"{folder_path}output/book.txt"
+    try:
+        # List contents under springer_books prefix
+        prefix = "springer_books/"
+        response = s3_client.list_objects_v2(
+            Bucket=AWS_BUCKET_NAME,
+            Prefix=prefix,
+            Delimiter='/'
+        )
         
-        try:
-            # Check if file exists
-            s3_client.head_object(Bucket=AWS_BUCKET_NAME, Key=output_path)
+        # Process only first 3 book folders
+        count = 0
+        for prefix_obj in response.get('CommonPrefixes', []):
+            if count >= 3:  # Limit to first 3 books
+                break
+                
+            book_folder = prefix_obj.get('Prefix')
+            logger.info(f"Processing book folder: {book_folder}")
             
-            # Extract book name from folder path
-            book_name = folder_path.rstrip('/').split('/')[-1]
-            local_file_path = local_dir / f"{book_name}_book.txt"
-            
-            # Download file
-            s3_client.download_file(AWS_BUCKET_NAME, output_path, str(local_file_path))
-            book_files.append({
-                'local_path': str(local_file_path),
-                'book_name': book_name
-            })
-            logger.info(f"Downloaded: {output_path} to {local_file_path}")
-            
-        except Exception as e:
-            logger.warning(f"Skipping {output_path}: {str(e)}")
+            # Check for book.txt in output folder
+            output_path = f"{book_folder}output/book.txt"
+            try:
+                # Check if file exists
+                s3_client.head_object(Bucket=AWS_BUCKET_NAME, Key=output_path)
+                
+                # Extract book name from folder path
+                book_name = book_folder.rstrip('/').split('/')[-1]
+                local_file_path = local_dir / f"{book_name}_book.txt"
+                
+                # Download file
+                s3_client.download_file(
+                    AWS_BUCKET_NAME,
+                    output_path,
+                    str(local_file_path)
+                )
+                
+                book_files.append({
+                    'local_path': str(local_file_path),
+                    'book_name': book_name
+                })
+                logger.info(f"Successfully downloaded: {output_path} to {local_file_path}")
+                count += 1
+                
+            except Exception as e:
+                logger.warning(f"Could not download {output_path}: {str(e)}")
+                continue
+    
+    except Exception as e:
+        logger.error(f"Error listing S3 bucket contents: {str(e)}")
+        raise
     
     if not book_files:
         raise ValueError("No book.txt files found in output folders")
     
+    logger.info(f"Successfully downloaded {len(book_files)} books")
     context['task_instance'].xcom_push(key='downloaded_books', value=book_files)
     return book_files
 
+# Process files function remains mostly the same, just updating the log message
 def process_book_files(**context):
     """Task to split books into chunks with unique IDs."""
     downloaded_books = context['task_instance'].xcom_pull(task_ids='download_book_files_from_s3', key='downloaded_books')
@@ -113,7 +140,7 @@ def process_book_files(**context):
             book_chunks = []
             
             for i, chunk in enumerate(chunks[:50]):  # Process up to 50 chunks per book
-                chunk_id = f"{book_info['book_name']}_id{i:04d}"  # Creates IDs like BookName_id0001
+                chunk_id = f"{book_info['book_name']}_id{i:04d}"
                 book_chunks.append({
                     'chunk_id': chunk_id,
                     'text': chunk,
@@ -127,7 +154,6 @@ def process_book_files(**context):
         except Exception as e:
             logger.error(f"Failed to process file {book_info['local_path']}: {e}")
     
-    # Save chunks to temporary file
     temp_chunks_file = "/tmp/processed_chunks.json"
     with open(temp_chunks_file, 'w') as f:
         json.dump(processed_chunks, f)
@@ -135,8 +161,8 @@ def process_book_files(**context):
     context['task_instance'].xcom_push(key='processed_chunks_file', value=temp_chunks_file)
     return temp_chunks_file
 
+# Generate embeddings function remains the same
 def generate_embeddings(**context):
-    """Task to generate embeddings for text chunks."""
     chunks_file = context['task_instance'].xcom_pull(task_ids='process_book_files', key='processed_chunks_file')
     
     with open(chunks_file, 'r') as f:
@@ -155,7 +181,6 @@ def generate_embeddings(**context):
         except Exception as e:
             logger.error(f"Failed to generate embedding for chunk {chunk['chunk_id']}: {e}")
     
-    # Save embeddings to temporary file
     temp_embeddings_file = "/tmp/chunks_with_embeddings.json"
     with open(temp_embeddings_file, 'w') as f:
         json.dump(chunks_with_embeddings, f)
@@ -173,18 +198,18 @@ def store_vectors(**context):
     try:
         # Initialize Pinecone with correct environment
         pc = Pinecone(api_key=PINECONE_API_KEY, environment='gcp-starter')
-        index_name = "final-project"
+        index_name = "finalbigdata"  # Updated index name
         
-        # Get index (assuming it's already created)
+        # Get index
         index = pc.Index(index_name)
         
         # Process in batches with exponential backoff
-        batch_size = 5  # Reduced batch size
+        batch_size = 5
         current_batch = []
         total_vectors = len(chunks_with_embeddings)
         vectors_uploaded = 0
         max_retries = 3
-        base_delay = 2  # Base delay in seconds
+        base_delay = 2
         
         for chunk in chunks_with_embeddings:
             vector_data = (
@@ -206,13 +231,12 @@ def store_vectors(**context):
                         vectors_uploaded += len(current_batch)
                         logger.info(f"Progress: {vectors_uploaded}/{total_vectors} vectors uploaded")
                         current_batch = []
-                        time.sleep(1)  # Basic rate limiting
+                        time.sleep(1)
                         break
                     except Exception as e:
                         retry_count += 1
                         if retry_count == max_retries:
                             logger.error(f"Failed to upload batch after {max_retries} retries")
-                            # Try uploading vectors one by one
                             for single_vector in current_batch:
                                 try:
                                     index.upsert(vectors=[single_vector])
@@ -221,7 +245,7 @@ def store_vectors(**context):
                                 except Exception as single_e:
                                     logger.error(f"Failed to upload vector {single_vector[0]}: {str(single_e)}")
                         else:
-                            wait_time = base_delay * (2 ** retry_count)  # Exponential backoff
+                            wait_time = base_delay * (2 ** retry_count)
                             logger.warning(f"Retry {retry_count + 1}/{max_retries} after {wait_time}s")
                             time.sleep(wait_time)
                 current_batch = []
@@ -265,7 +289,7 @@ def store_vectors(**context):
     except Exception as e:
         logger.error(f"Fatal error in store_vectors: {str(e)}")
         raise e
-    
+
 # DAG definition
 default_args = {
     "owner": "tanvi",
@@ -279,7 +303,7 @@ default_args = {
 dag = DAG(
     "s3_to_pinecone_book_processing",
     default_args=default_args,
-    description="DAG to process book.txt files from S3 output folders and store vectors in Pinecone",
+    description="Process first 3 books from S3 and store in Pinecone",
     schedule_interval=timedelta(days=1),
     start_date=datetime(2024, 11, 15),
     catchup=False,
