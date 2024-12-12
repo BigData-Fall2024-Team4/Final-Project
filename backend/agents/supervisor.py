@@ -8,6 +8,7 @@ import re
 from datetime import datetime, timezone, timedelta  
 import json  
 from .document_handler import DocumentHandlerAgent
+from .canvas.pdf_listing_agent import PDFListingAgent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -29,17 +30,35 @@ class SupervisorState(BaseModel):
 class CanvasGPTSupervisor:
     """Main supervisor class for orchestrating agent interactions"""
     
-    def __init__(self, openai_api_key: str, canvas_api_key: str = None, canvas_base_url: str = None):
+    def __init__(self, openai_api_key: str, canvas_api_key: str = None, canvas_base_url: str = None,
+             aws_access_key_id: str = None, aws_secret_access_key: str = None, 
+             s3_bucket_name: str = None, s3_books_folder: str = None):
         self.llm = ChatOpenAI(api_key=openai_api_key)
         self.web_agent = WebSearchAgent()
         self.canvas_agent = CanvasPostAgent(canvas_api_key, canvas_base_url) if canvas_api_key else None
         self.state = SupervisorState()
         self.document_handler = DocumentHandlerAgent()
+        
+        # Initialize PDF listing agent
+        if all([aws_access_key_id, aws_secret_access_key, s3_bucket_name, s3_books_folder]):
+            try:
+                self.pdf_listing_agent = PDFListingAgent(
+                    aws_access_key_id, 
+                    aws_secret_access_key, 
+                    s3_bucket_name,
+                    s3_books_folder
+                )
+                logger.info("PDF listing agent initialized successfully")
+            except Exception as e:
+                logger.error(f"Failed to initialize PDF listing agent: {str(e)}")
+                self.pdf_listing_agent = None
+        else:
+            self.pdf_listing_agent = None
 
-        self.pending_quiz = None  
-        self.pending_announcement = None 
-        self.pending_assignment = None  
-        self.pending_page = None  
+        self.pending_quiz = None
+        self.pending_announcement = None
+        self.pending_assignment = None
+        self.pending_page = None
         logger.info("CanvasGPT Supervisor initialized")
 
     def _get_conversation_context(self, current_message: str) -> str:
@@ -70,6 +89,8 @@ class CanvasGPTSupervisor:
 
     async def _route_message(self, message: str) -> str:
         """Determine which agent should handle the message"""
+        if message.lower().strip() == "show pdfs":
+            return "pdf_listing"
         # First check explicitly for file upload before using GPT
         if "with the file uploaded" in message.lower():
             logger.info("File upload detected, routing to appropriate handler")
@@ -121,7 +142,8 @@ class CanvasGPTSupervisor:
             7. Otherwise -> 'general'
             """
 
-        response = await self.llm.apredict(routing_prompt)
+        # response = await self.llm.apredict(routing_prompt)
+        response = await self.llm.ainvoke(routing_prompt)
         return response.strip().lower()   
 
 
@@ -152,6 +174,22 @@ class CanvasGPTSupervisor:
                 metadata={"has_file": bool(file_content)}
             ))
 
+            # Handle confirmations first
+            lower_message = message.lower()
+            if lower_message in ['yes', 'post it', 'post', 'yes post it']:
+                if self.pending_quiz:
+                    return await self._handle_quiz_confirmation()
+                elif self.pending_announcement:
+                    return await self._handle_announcement_confirmation()
+                elif self.pending_assignment:
+                    return await self._handle_assignment_confirmation()
+                elif self.pending_page:
+                    return await self._handle_page_confirmation()
+
+            # Handle cancellations
+            elif lower_message in ['no', 'cancel', 'dont post', "don't post"]:
+                return self._handle_cancellation()
+
             # Process file if present
             file_result = None
             if file_content:
@@ -174,35 +212,28 @@ class CanvasGPTSupervisor:
                     "filename": file_result["filename"]
                 })
 
-            # Handle confirmations first
-            lower_message = message.lower()
-            if lower_message in ['yes', 'post it', 'post', 'yes post it']:
-                if self.pending_quiz:
-                    return await self._handle_quiz_confirmation()
-                elif self.pending_announcement:
-                    return await self._handle_announcement_confirmation()
-                elif self.pending_assignment:
-                    return await self._handle_assignment_confirmation()
-                elif self.pending_page:
-                    return await self._handle_page_confirmation()
-
-            # Handle cancellations
-            elif lower_message in ['no', 'cancel', 'dont post', "don't post"]:
-                return self._handle_cancellation()
-
             # Route the message
             route = await self._route_message(message)
             logger.info(f"Message routed to: {route}")
 
-            # Handle different routes based on message type and content
             try:
                 # Initialize context
                 context = self._get_conversation_context(message)
 
-                # Handle file upload cases first
-                if file_content:
+                # Handle different routes based on message type and content
+                if route == "pdf_listing":
+                    if not self.pdf_listing_agent:
+                        response = {
+                            "response": "PDF listing is not configured. Please provide AWS credentials.",
+                            "agent": "pdf_listing",
+                            "conversation_id": id(self.state)
+                        }
+                    else:
+                        response = await self.pdf_listing_agent.process_request(message)
+
+                # Handle file upload cases
+                elif file_content:
                     if route == "assignment":
-                        logger.info("Processing assignment with file upload")
                         return await self._handle_assignment_request(
                             message,
                             {
@@ -213,7 +244,6 @@ class CanvasGPTSupervisor:
                             }
                         )
                     elif route == "page":
-                        logger.info("Processing page with file upload")
                         return await self._handle_page_request(
                             message,
                             {
@@ -224,7 +254,6 @@ class CanvasGPTSupervisor:
                             }
                         )
                     elif route == "quiz":
-                        logger.info("Processing quiz with file upload")
                         return await self._handle_quiz_request(
                             message,
                             {
@@ -234,8 +263,7 @@ class CanvasGPTSupervisor:
                                 "file_type": file_result["file_type"]
                             }
                         )
-                    else:  # Default to announcement
-                        logger.info("Processing announcement with file upload")
+                    else:
                         return await self._handle_post_request(
                             message,
                             {
@@ -247,7 +275,7 @@ class CanvasGPTSupervisor:
                         )
 
                 # Handle non-file cases
-                if route == "canvas_quiz":
+                elif route == "canvas_quiz":
                     response = await self._handle_quiz_request(message, context)
                 elif route == "canvas_post":
                     response = await self._handle_post_request(message, context)
@@ -274,7 +302,7 @@ class CanvasGPTSupervisor:
 
             except Exception as e:
                 logger.error(f"Error in route handling: {str(e)}")
-                raise  # Re-raise to be caught by outer try-except
+                raise
 
         except Exception as e:
             logger.error(f"Error processing message: {str(e)}")
@@ -813,4 +841,6 @@ class CanvasGPTSupervisor:
             await self.canvas_agent.close()
         if hasattr(self, 'document_handler'):
             await self.document_handler.close()
+        if hasattr(self, 'pdf_listing_agent'):
+            await self.pdf_listing_agent.close()
         logger.info("All agent sessions closed")
