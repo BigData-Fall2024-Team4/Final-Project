@@ -19,7 +19,8 @@ jobs:
           script: |
             # Pull latest changes
             cd ~/Final-Project
-            git pull origin main
+            git fetch --all
+            git reset --hard origin/main
 
             # Deploy Airflow
             echo "Deploying Airflow..."
