@@ -279,10 +279,18 @@ class CanvasPostAgent:
                 if "page" in message_lower or "as a page" in message_lower:
                     logger.info(f"Creating page in course {course_name}")
                     if hasattr(self, 'pages_agent'):
+                        # Extract text content if present
+                        text_match = re.search(r'Text:\s*"([^"]+)"', message) or \
+                                    re.search(r'Text:\s*\'([^\']+)\'', message) or \
+                                    re.search(r'Text:\s*([^\n]+)', message)
+                        
+                        body = text_match.group(1).strip() if text_match else content
+                        logger.info(f"Extracted content for page: {body}")
+                        
                         return await self.pages_agent.create_page(
                             course_id=course_id,
                             title=title,
-                            body=content,
+                            body=body,
                             published=True
                         )
                     else:
@@ -290,7 +298,7 @@ class CanvasPostAgent:
                             "success": False,
                             "message": "Page creation functionality not available"
                         }
-
+                        
                 # Handle assignment creation
                 elif "assignment" in message_lower:
                     logger.info(f"Creating assignment in course {course_name}")
