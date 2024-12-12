@@ -62,29 +62,49 @@ class CanvasGPTSupervisor:
         logger.info("CanvasGPT Supervisor initialized")
 
     def _get_conversation_context(self, current_message: str) -> str:
-        """Get relevant context from conversation history"""
-        if not self.state.messages:  # If no messages in history
+        """Get recent conversation context"""
+        if not self.state.messages:
             return ""
             
-        conversation_history = []
-        for msg in self.state.messages[-5:]:  # Get last 5 messages for context
-            if msg.role == "user":
-                conversation_history.append(f"User: {msg.content}")
-            else:
-                conversation_history.append(f"Assistant: {msg.content}")
+        recent_messages = self.state.messages[-5:]  # Get last 5 messages
+        conversation_parts = []
         
-        conversation_context = "\n".join(conversation_history)
+        for msg in recent_messages:
+            role = "User" if msg.role == "user" else "Assistant"
+            conversation_parts.append(f"{role}: {msg.content}")
         
-        if not conversation_context:  # If no valid context
-            return ""
+        return "\n".join(conversation_parts)
             
-        context_prompt = f"""
-        Previous conversation:
-        {conversation_context}
+    async def _clean_content_with_llm(self, message: str, content_type: str) -> str:
+        """Use LLM to extract clean content for any Canvas LMS content type"""
 
-        Current message: {current_message}
-        """
-        return context_prompt
+        # Get conversation context
+        context = self._get_conversation_context(message)
+        
+        prompt = f"""You are a content extractor for Canvas LMS. Your task is to extract the actual content that should be posted as a {content_type}.
+
+        Important Guidelines:
+        1. For simple posts with Text: markers, just extract that text
+        2. For links, just return the URL
+        3. For content referencing "above" or "previous", find and extract that content
+        4. For assignments, quizzes, or pages, extract the full structured content
+        5. Ignore all command language and metadata
+        6. Remove course references like [course_name]
+        7. Keep the content's original formatting when important (like quiz questions)
+
+        Current message:
+        {message}
+
+        Recent conversation:
+        {context}
+        
+        Extract and return ONLY the content that should be posted to Canvas as a {content_type}. If the message is asking to reuse previous content, find and extract that content."""
+
+        clean_content = await self.llm.apredict(prompt)
+        return clean_content.strip()
+
+
+
 
 
     async def _route_message(self, message: str) -> str:
@@ -142,8 +162,7 @@ class CanvasGPTSupervisor:
             7. Otherwise -> 'general'
             """
 
-        # response = await self.llm.apredict(routing_prompt)
-        response = await self.llm.ainvoke(routing_prompt)
+        response = await self.llm.apredict(routing_prompt)
         return response.strip().lower()   
 
 
@@ -234,6 +253,7 @@ class CanvasGPTSupervisor:
                 # Handle file upload cases
                 elif file_content:
                     if route == "assignment":
+                        logger.info("Processing assignment with file upload")
                         return await self._handle_assignment_request(
                             message,
                             {
@@ -244,6 +264,7 @@ class CanvasGPTSupervisor:
                             }
                         )
                     elif route == "page":
+                        logger.info("Processing page with file upload")
                         return await self._handle_page_request(
                             message,
                             {
@@ -254,6 +275,7 @@ class CanvasGPTSupervisor:
                             }
                         )
                     elif route == "quiz":
+                        logger.info("Processing quiz with file upload")
                         return await self._handle_quiz_request(
                             message,
                             {
@@ -263,7 +285,8 @@ class CanvasGPTSupervisor:
                                 "file_type": file_result["file_type"]
                             }
                         )
-                    else:
+                    else:  # Default to announcement
+                        logger.info("Processing announcement with file upload")
                         return await self._handle_post_request(
                             message,
                             {
@@ -353,6 +376,78 @@ class CanvasGPTSupervisor:
 
 
 
+    async def _handle_page_request(self, message: str, content: Union[str, Dict]) -> Dict[str, str]:
+        """Handle page creation requests with URL support"""
+        if not self.canvas_agent:
+            return {
+                "response": "Canvas is not configured. Please provide Canvas API credentials.",
+                "agent": "canvas_page",
+                "conversation_id": id(self.state)
+            }
+
+        course_match = re.search(r'\[(.*?)\]', message)
+        if not course_match:
+            return {
+                "response": "Please specify a course name in square brackets, e.g. [Course Name]",
+                "agent": "canvas_page",
+                "conversation_id": id(self.state)
+            }
+        
+        course_name = course_match.group(1)
+        title = self._extract_title(message)
+        
+        # Extract URL if present
+        url_match = re.search(r'link:(https?://[^\s]+)', message)
+        if url_match:
+            url = url_match.group(1)
+            # Extract content from URL
+            url_content = await self.web_agent.extract_url_content(url)
+            if url_content["success"]:
+                cleaned_content = url_content["content"]
+                # Add source reference
+                cleaned_content += f"\n\nSource: {url_content['original_url']}"
+            else:
+                return {
+                    "response": f"Failed to extract content from URL: {url_content.get('error', 'Unknown error')}",
+                    "agent": "canvas_page",
+                    "conversation_id": id(self.state)
+                }
+        else:
+            # Handle regular content
+            cleaned_content = await self._clean_content_with_llm(message, "page")
+        
+        if isinstance(content, dict) and content.get("file_content"):
+            self.pending_page = {
+                "course_name": course_name,
+                "content": cleaned_content,
+                "title": title,
+                "file_content": content["file_content"],
+                "file_name": content.get("filename")
+            }
+        else:
+            self.pending_page = {
+                "course_name": course_name,
+                "content": cleaned_content,
+                "title": title
+            }
+        
+        response = (
+            f"I've prepared the page for {course_name}:\n"
+            f"Title: {title}\n"
+            f"Content:\n{cleaned_content}\n\n"
+        )
+        
+        if "file_content" in self.pending_page:
+            response += f"File to be attached: {self.pending_page['file_name']}\n\n"
+        
+        response += "Would you like me to create this page? (Reply with 'yes' to create or 'no' to cancel)"
+        
+        return {
+            "response": response,
+            "agent": "canvas_page",
+            "conversation_id": id(self.state)
+        }
+
     async def _handle_post_request(self, message: str, content: Union[str, Dict]) -> Dict[str, str]:
         """Handle announcement posting requests"""
         if not self.canvas_agent:
@@ -376,30 +471,28 @@ class CanvasGPTSupervisor:
         if not title:
             title = await self.canvas_agent.announcement_agent.generate_title(message)
         
-        # Handle content based on type
-        if isinstance(content, dict) and content.get("file_content"):
+        # Clean content using LLM
+        cleaned_content = await self._clean_content_with_llm(message, "announcement")
+        
             # Handle file upload case
-            file_content = content["file_content"]
-            text = content.get("text", "File uploaded")
+        if isinstance(content, dict) and content.get("file_content"):
             self.pending_announcement = {
                 "course_name": course_name,
-                "content": text,
+                "content": cleaned_content,
                 "title": title,
-                "file_content": file_content,
+                "file_content": content["file_content"],
                 "filename": content.get("filename")
             }
         else:
-            # Handle regular text announcement
-            text_content = content if isinstance(content, str) else str(content)
             self.pending_announcement = {
                 "course_name": course_name,
-                "content": text_content,
+                "content": cleaned_content,
                 "title": title
             }
         
         response = (
-            f"Here's the announcement for {course_name}:\n\n"
-            f"Title: {title}\n\n"
+            f"Here's the announcement for {course_name}:\n"
+            f"Title: {title}\n"
             f"{self.pending_announcement['content']}\n\n"
         )
         
@@ -413,8 +506,6 @@ class CanvasGPTSupervisor:
             "agent": "canvas_post",
             "conversation_id": id(self.state)
         }
-
-
     async def _handle_quiz_confirmation(self) -> Dict[str, str]:
         """Handle confirmation for quiz creation"""
         if not self.canvas_agent:
@@ -611,7 +702,7 @@ class CanvasGPTSupervisor:
             "conversation_id": id(self.state)
         }
 
-    async def _handle_quiz_request(self, message: str, context: str) -> Dict[str, str]:
+    async def _handle_quiz_request(self, message: str, content: str) -> Dict[str, str]:
         """Handle quiz creation requests"""
         if not self.canvas_agent:
             return {
@@ -631,24 +722,19 @@ class CanvasGPTSupervisor:
         course_name = course_match.group(1)
         title = self._extract_title(message) or "Quiz"
         
-        if "Questions" in message and "(Correct Answer:" in message:
-            content = message[message.find("Questions"):]
-        else:
-            content = await self.web_agent.process(
-                message.replace(f"[{course_name}]", "").strip(),
-                conversation_context=context if context else None
-            )
+        # Clean content using LLM
+        cleaned_content = await self._clean_content_with_llm(message, "quiz")
         
         self.pending_quiz = {
             "course_name": course_name,
-            "content": content,
+            "content": cleaned_content,
             "title": title
         }
         
         response = (
-            f"I've prepared the quiz for {course_name}:\n\n"
+            f"I've prepared the quiz for {course_name}:\n"
             f"Title: {title}\n\n"
-            f"Content Summary:\n{content[:500]}...\n\n"
+            f"Content:\n{cleaned_content}\n\n"
             "Would you like me to create this quiz? (Reply with 'yes' to create or 'no' to cancel)"
         )
         
@@ -704,73 +790,47 @@ class CanvasGPTSupervisor:
             }
         
         course_name = course_match.group(1)
-        
-        # Extract metadata
-        title = self._extract_title(message) or "Assignment"
+        title = self._extract_title(message)
         points_match = re.search(r'points\s*should\s*be\s*(\d+)', message)
         points = int(points_match.group(1)) if points_match else 100
         
-        # Extract submission types
-        submission_types = ["online_text_entry"]  # default
-        if "submission type should be" in message.lower():
-            if "text entry" in message.lower():
-                submission_types = ["online_text_entry"]
-            elif "file upload" in message.lower():
-                submission_types = ["online_upload"]
-            elif "url" in message.lower():
-                submission_types = ["online_url"]
-        
-        # Extract assignment content
-        assignment_match = re.search(r'Assignment:(.*?)(?=$)', message, re.DOTALL)
-        if not assignment_match:
-            return {
-                "response": "Please include 'Assignment:' followed by the assignment content.",
-                "agent": "canvas_assignment",
-                "conversation_id": id(self.state)
-            }
+        # Clean content using LLM
+        cleaned_content = await self._clean_content_with_llm(message, "assignment")
 
-        assignment_content = assignment_match.group(1).strip()
-
-        # Handle file content if present
         if isinstance(content, dict) and content.get("file_content"):
-            file_content = content["file_content"]
-            file_name = content.get("filename", "uploaded_file")
-            
-            # Store as pending assignment with file
             self.pending_assignment = {
                 "course_name": course_name,
-                "content": assignment_content,
+                "content": cleaned_content,
                 "title": title,
                 "points": points,
-                "submission_types": submission_types,
-                "file_content": file_content,
-                "file_name": file_name
+                "submission_types": self.canvas_agent.parse_submission_types(message),
+                "file_content": content["file_content"],
+                "file_name": content.get("filename")
             }
         else:
             # Store as pending assignment without file
             self.pending_assignment = {
                 "course_name": course_name,
-                "content": assignment_content,
+                "content": cleaned_content,
                 "title": title,
                 "points": points,
-                "submission_types": submission_types
+                "submission_types": self.canvas_agent.parse_submission_types(message)
             }
         
-        # Create response message
-        response_parts = [
-            f"I've prepared the assignment for {course_name}:",
-            f"Title: {title}",
-            f"Points: {points}",
-            f"Submission Types: {', '.join(submission_types)}",
-        ]
+        response = (
+            f"I've prepared the assignment for {course_name}:\n"
+            f"Title: {title}\n"
+            f"Points: {points}\n"
+            f"Content:\n{cleaned_content}\n\n"
+        )
         
-        if "file_name" in self.pending_assignment:
-            response_parts.append(f"File to be attached: {self.pending_assignment['file_name']}")
+        if "file_content" in self.pending_assignment:
+            response += f"File to be attached: {self.pending_assignment['file_name']}\n\n"
         
-        response_parts.append("\nWould you like me to create this assignment? (Reply with 'yes' to create or 'no' to cancel)")
+        response += "Would you like me to create this assignment? (Reply with 'yes' to create or 'no' to cancel)"
         
         return {
-            "response": "\n".join(response_parts),
+            "response": response,
             "agent": "canvas_assignment",
             "conversation_id": id(self.state)
         }

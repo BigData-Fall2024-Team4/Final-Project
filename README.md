@@ -110,6 +110,9 @@ The system is deployed on **Google Cloud Platform (GCP)**, using Docker for cont
 - **GitLab**: We plan to leverage GitHub Actions to implement CI/CD pipeline for our project. This setup will automate essential tasks such as deployment, dependency management, and initial testing whenever changes are pushed to the frontend (Chrome extension) or backend (FastAPI) repositories. Additionally, it will facilitate deployments to our GCP instance using Docker, ensuring updated code, rebuilt images. By automating these processes, we aim to maintain system stability, and accelerate feature updates for the CanvasGPT system.
 
 
+**Generate Token on Canvas LMS API**
+Please follow the detail intrction on how can one generate a token on CANVAS LMS: [Generate Token for CANVAS LMS](https://community.canvaslms.com/t5/Canvas-Basics-Guide/How-do-I-manage-API-access-tokens-in-my-user-account/ta-p/615312)
+
 ### Additional Notes
 WE ATTEST THAT WE HAVEN’T USED ANY OTHER STUDENTS’ WORK IN OUR ASSIGNMENT AND ABIDE BY THE POLICIES LISTED IN THE STUDENT HANDBOOK. 
 
