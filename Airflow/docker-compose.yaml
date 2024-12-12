@@ -1,6 +1,8 @@
 x-airflow-common:
   &airflow-common
-  image: ${AIRFLOW_IMAGE_NAME:-apache/airflow:2.10.2}
+  build:
+    context: .
+    dockerfile: Dockerfile
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: CeleryExecutor
@@ -15,6 +17,16 @@ x-airflow-common:
     AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
     AIRFLOW__CORE__XCOM_PICKLING: 'true'
     
+    # Python and Chrome Settings
+    PYTHONPATH: /opt/airflow/dags
+    DISPLAY: :99
+    # CHROMEDRIVER_PATH: /usr/bin/chromedriver
+    # CHROME_BINARY_PATH: /usr/bin/google-chrome
+    PYTHONUNBUFFERED: "1"
+    WDM_LOG_LEVEL: "0"
+    # CHROMEDRIVER_DIR: /opt/chromedriver
+    # SELENIUM_DIR: /opt/selenium
+    
     # Logging Configuration
     AIRFLOW__LOGGING__BASE_LOG_FOLDER: /opt/airflow/logs
     AIRFLOW__LOGGING__DAG_FILE_PROCESSOR_LOG_TARGET: /opt/airflow/logs/dag_processor_manager/dag_processor_manager.log
@@ -28,8 +40,6 @@ x-airflow-common:
     # Timezone and Region Settings
     TZ: "UTC"
     AWS_DEFAULT_REGION: "us-east-1"
-    
-    _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-pandas selenium boto3 requests PyMuPDF webdriver_manager snowflake-connector-python snowflake-sqlalchemy cryptography ntplib docling==2.5.2 apache-airflow-providers-amazon tabula-py pinecone-client langchain openai}
 
   volumes:
     - ${AIRFLOW_PROJ_DIR:-.}/dags:/opt/airflow/dags
@@ -38,6 +48,7 @@ x-airflow-common:
     - ${AIRFLOW_PROJ_DIR:-.}/plugins:/opt/airflow/plugins
     - ${AIRFLOW_PROJ_DIR:-.}/credentials:/opt/airflow/credentials
     - /dev/shm:/dev/shm
+    # - /tmp/.X11-unix:/tmp/.X11-unix
     - /etc/localtime:/etc/localtime:ro
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
@@ -94,7 +105,7 @@ services:
 
   airflow-scheduler:
     <<: *airflow-common
-    command: scheduler
+    command: bash -c "airflow scheduler"
     healthcheck:
       test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
       interval: 30s
@@ -109,7 +120,7 @@ services:
 
   airflow-worker:
     <<: *airflow-common
-    command: celery worker
+    command: bash -c "airflow celery worker"
     healthcheck:
       test:
         - "CMD-SHELL"
@@ -129,7 +140,7 @@ services:
 
   airflow-triggerer:
     <<: *airflow-common
-    command: triggerer
+    command: bash -c "airflow triggerer"
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type TriggererJob --hostname "$${HOSTNAME}"']
       interval: 30s
@@ -158,7 +169,6 @@ services:
       _AIRFLOW_WWW_USER_CREATE: 'true'
       _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
       _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
-      _PIP_ADDITIONAL_REQUIREMENTS: ''
     user: "0:0"
     volumes:
       - ${AIRFLOW_PROJ_DIR:-.}:/sources
