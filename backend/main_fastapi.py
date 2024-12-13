@@ -35,7 +35,9 @@ supervisor = CanvasGPTSupervisor(
     s3_bucket_name=os.getenv("S3_BUCKET_NAME"),
     s3_books_folder=os.getenv("S3_BOOKS_FOLDER"),
     nvidia_api_key=os.getenv("NVIDIA_API_KEY"),
-    nvidia_api_url=os.getenv("NVIDIA_API_URL")
+    nvidia_api_url=os.getenv("NVIDIA_API_URL"),
+    pinecone_index_name=os.getenv("PINECONE_INDEX_NAME"),
+    pinecone_api_key=os.getenv("PINECONE_API_KEY"),
 )
 @app.post("/agent-workflow")
 async def process_message(

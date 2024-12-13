@@ -34,7 +34,8 @@ class CanvasGPTSupervisor:
     def __init__(self, openai_api_key: str, canvas_api_key: str = None, canvas_base_url: str = None,
              aws_access_key_id: str = None, aws_secret_access_key: str = None, 
                 s3_bucket_name: str = None, s3_books_folder: str = None,
-                nvidia_api_key: str = None, nvidia_api_url: str = None):
+                nvidia_api_key: str = None, nvidia_api_url: str = None,
+                pinecone_api_key: str = None,pinecone_index_name: str = None):
         
         self.llm = ChatOpenAI(api_key=openai_api_key)
         self.web_agent = WebSearchAgent()
@@ -61,10 +62,12 @@ class CanvasGPTSupervisor:
 
         # Initialize RAG query agent with NVIDIA credentials
         try:
-            if nvidia_api_key and nvidia_api_url:
+            if all([nvidia_api_key, nvidia_api_url, pinecone_api_key, pinecone_index_name]):
                 self.rag_agent = RAGQueryAgent(
                     api_key=nvidia_api_key,
-                    api_url=nvidia_api_url
+                    api_url=nvidia_api_url,
+                    pinecone_api_key=pinecone_api_key,
+                    pinecone_index_name=pinecone_index_name,
                 )
                 logger.info("RAG query agent initialized successfully")
             else:
