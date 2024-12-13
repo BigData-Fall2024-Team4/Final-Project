@@ -257,9 +257,9 @@ The system is deployed on AWS with the following components:
 
 | Name                            | Percentage Contribution |
 | ------------------------------- | ----------------------- |
-| Sarthak Somvanshi               | 33% (User login, JWT, GCP Deployment, Swagger UI)                    |
-| Yuga Kanse                      | 33% (FastAPI endpoint development, Chrome extension LLM integration, Web & Multi-modal agent creation, Testing implementation)                  |
-| Tanvi Inchanalkar               | 33% (Data ingestion, Airflow pipeline development (S3, Snowflake, PDF processing), GCP deployment, CI/CD implementation, Documentation & Architecture diagrams)                   |
+| Sarthak Somvanshi               | 33%(Basic chatbot development, Agentic architecture design, Document handler, Canvas Post Agent integration & testing, Final system testing)                    |
+| Yuga Kanse                      | 33%(FastAPI endpoint development, Chrome extension LLM integration, Web & Multi-modal agent creation, Testing implementation)                  |
+| Tanvi Inchanalkar               | 33%(Data ingestion, Airflow pipeline development (S3, Snowflake, PDF processing), GCP deployment, CI/CD implementation, Documentation & Architecture diagrams)                   |
 
 
 
