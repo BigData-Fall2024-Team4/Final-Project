@@ -20,7 +20,6 @@ CanvasGPT is an innovative AI-powered application designed to transform how prof
 - **Streamlit**: Admin dashboard development for monitoring and analytics
 - **FastAPI**: High-performance REST API development with async support
 - **OpenAI Models**: Natural language processing and document understanding
-- **Azure Cloud Storage**: Secure file storage and document management
 - **Snowflake DB**: Structured data storage for course and user information
 - **Pinecone**: Vector database for semantic search and document retrieval
 - **Apache Airflow**: Orchestration of ETL pipelines and scheduling tasks
@@ -28,7 +27,7 @@ CanvasGPT is an innovative AI-powered application designed to transform how prof
 - **Docker**: Application containerization and environment standardization
 - **Git Actions**: CI/CD pipeline automation and testing
 - **GitLab**: Version control and project management
-- **Langraph**: Conversation flow management and dialogue state handling
+- **Langchain**: Conversation flow management and dialogue state handling
 - **NV-Embed Embeddings**: Document vectorization for semantic search
 - **HTML/CSS**: Frontend styling and layout
 - **JavaScript**: Client-side functionality and Canvas API integration 
