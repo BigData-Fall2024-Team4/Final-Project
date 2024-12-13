@@ -111,6 +111,14 @@ class CanvasGPTSupervisor:
         """Determine which agent should handle the message"""
         if message.lower().strip() == "show pdfs":
             return "pdf_listing"
+        
+        # NEW: Check for extraction requests
+        message_lower = message.lower()
+        if any(keyword in message_lower for keyword in ["extract", "extract data", "extract content", "analyze content"]):
+            logger.info("Content extraction request detected")
+            if "[" not in message:
+                return "document_extraction"
+        
         # First check explicitly for file upload before using GPT
         if "with the file uploaded" in message.lower():
             logger.info("File upload detected, routing to appropriate handler")
@@ -182,6 +190,36 @@ class CanvasGPTSupervisor:
         return await self.canvas_agent.list_courses()
 
 
+
+    async def _process_extracted_content_with_llm(self, content: Dict[str, Any], file_type: str) -> str:
+        """Process extracted content with LLM based on file type"""
+        if file_type == '.pdf':
+            # Handle PDF content
+            if isinstance(content, dict) and 'full_text' in content:
+                text_content = content['full_text']
+                # Add section information if available
+                if content.get('sections'):
+                    text_content += "\n\nDocument Sections:\n"
+                    for section in content['sections']:
+                        if section.get('heading'):
+                            text_content += f"\n{section['heading']}:\n"
+                        text_content += f"{section.get('text', '')}\n"
+                
+                return text_content
+            
+        elif file_type in ['.jpg', '.jpeg', '.png']:
+            # Handle image content
+            if isinstance(content, dict):
+                return content.get('text', 'No text extracted from image')
+                
+        elif file_type in ['.csv', '.xlsx']:
+            # Handle spreadsheet content
+            if isinstance(content, dict):
+                return json.dumps(content.get('structured_data', {}), indent=2)
+                
+        # Fallback for unhandled content types
+        return str(content)
+
     async def process_message(self, message: str, file_content: Optional[Dict] = None) -> Dict[str, str]:
         """Process incoming messages and route to appropriate agents"""
         try:
@@ -208,6 +246,55 @@ class CanvasGPTSupervisor:
             # Handle cancellations
             elif lower_message in ['no', 'cancel', 'dont post', "don't post"]:
                 return self._handle_cancellation()
+
+            # NEW: Handle extraction request
+            if "extract" in message.lower() and file_content and "[" not in message:
+                logger.info("Processing extraction request")
+                file_result = await self.document_handler.process_file(
+                    file_content["file"],
+                    file_content["filename"]
+                )
+                
+                if not file_result["success"]:
+                    return {
+                        "response": f"Error processing file: {file_result.get('error', 'Unknown error')}",
+                        "agent": "document_handler",
+                        "conversation_id": id(self.state)
+                    }
+                
+                # Get the extracted content
+                extracted_content = file_result["content"]
+                
+                # If the content is a Document object list (from LlamaParse)
+                if isinstance(extracted_content, list) and len(extracted_content) > 0:
+                    # Extract text from the first Document object
+                    content_text = extracted_content[0].text
+                else:
+                    # Fallback for other content types
+                    content_text = str(extracted_content)
+                
+                # Store the formatted content for later use
+                self.state.context["extracted_content"] = content_text
+                
+                # Add extraction result to messages
+                self.state.messages.append(Message(
+                    content=f"Here's what I extracted from {file_result['filename']}:\n\n{content_text}",
+                    type="text",
+                    role="assistant",
+                    metadata={
+                        "agent": "document_handler",
+                        "file_type": file_result["file_type"],
+                        "extracted": True,
+                        "filename": file_result["filename"]
+                    }
+                ))
+                
+                return {
+                    "response": f"Here's what I extracted from {file_result['filename']}:\n\n{content_text}",
+                    "agent": "document_handler",
+                    "conversation_id": id(self.state)
+                }
+
 
             # Process file if present
             file_result = None
@@ -285,6 +372,35 @@ class CanvasGPTSupervisor:
                                 "file_type": file_result["file_type"]
                             }
                         )
+                    elif route == "document_extraction":
+                        logger.info("Processing simple extraction request")
+                        file_result = await self.document_handler.process_file(
+                            file_content["file"],
+                            file_content["filename"]
+                        )
+                        
+                        if not file_result["success"]:
+                            return {
+                                "response": f"Error processing file: {file_result.get('error', 'Unknown error')}",
+                                "agent": "document_handler",
+                                "conversation_id": id(self.state)
+                            }
+
+                        if file_result.get("extracted"):
+                            content = file_result["content"]
+                            processed_content = await self._process_extracted_content_with_llm(
+                                content, 
+                                file_result["file_type"]
+                            )
+                            
+                            logger.info("Extracted content:")
+                            logger.info(processed_content)
+                            
+                            return {
+                                "response": f"Here's what I extracted from the file:\n\n{processed_content}",
+                                "agent": "document_handler",
+                                "conversation_id": id(self.state)
+                            }
                     else:  # Default to announcement
                         logger.info("Processing announcement with file upload")
                         return await self._handle_post_request(
@@ -296,6 +412,7 @@ class CanvasGPTSupervisor:
                                 "file_type": file_result["file_type"]
                             }
                         )
+                    
 
                 # Handle non-file cases
                 elif route == "canvas_quiz":
@@ -335,9 +452,8 @@ class CanvasGPTSupervisor:
                 "agent": "error",
                 "conversation_id": id(self.state)
             }
-        
-        
-        
+   
+   
     async def _handle_page_confirmation(self) -> Dict[str, str]:
         """Handle confirmation for page creation"""
         if not self.canvas_agent:
@@ -612,6 +728,10 @@ class CanvasGPTSupervisor:
         try:
             # Get course ID
             course_id = await self.canvas_agent.get_course_id(self.pending_assignment['course_name'])
+            if "extracted_content" in self.state.context:
+                self.pending_assignment["content"] = self.state.context["extracted_content"]
+                logger.info("Using extracted content for assignment creation")
+                logger.info(f"Content being used: {self.pending_assignment['content']}")
             if not course_id:
                 return {
                     "response": f"Could not find course: {self.pending_assignment['course_name']}",

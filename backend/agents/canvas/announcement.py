@@ -33,118 +33,217 @@ class AnnouncementAgent(CanvasBaseAgent):
             logger.error(f"Error generating title: {str(e)}")
             return "Generated Content"  # Fallback title
 
-    async def create_announcement(self, course_id: str, title: str, message: str, 
-                                is_published: bool = True, file_content: bytes = None,
-                                file_name: str = None) -> Dict[str, Any]:
-        """Create a course announcement with optional file attachment"""
+
+    async def _format_content_with_llm(self, content: str) -> str:
+        """Use LLM to format content for Canvas announcement with improved table and typography handling"""
         try:
-            await self._ensure_session()
+            llm = ChatOpenAI()
             
-            # If title is default, generate a new one
-            if title == "Generated Content":
-                title = await self.generate_title(message)
+            prompt = f"""Format the following content for a Canvas LMS announcement, paying special attention to tables and typography.
+
+Rules for formatting:
+1. Tables:
+   - Must be enclosed in proper <table> tags
+   - Each row must use <tr> tags
+   - Headers must use <th> tags
+   - Data cells must use <td> tags
+   - Add borders and padding for readability
+   - Tables must be responsive
+
+2. Typography:
+   - Base font size should be 14px
+   - Headers should use relative sizes:
+     * h1: 20px
+     * h2: 16px
+     * h3: 12px
+   - Line height should be 1.5
+   - Use Arial or sans-serif fonts
+
+3. Structure:
+   - Each section should be clearly separated
+   - Numbered lists should use <ol> tags
+   - Add appropriate spacing between elements
+   - Preserve document hierarchy
+
+Here's the content to format:
+{content}
+
+Required HTML structure:
+<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+  [Main content here with all headers, tables, and lists properly formatted]
+</div>
+
+Tables should follow this structure:
+<div style="overflow-x: auto;">
+  <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
+    <thead>
+      <tr>
+        <th style="border: 1px solid #ddd; padding: 8px; background-color: #f5f6fa;">[header]</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="border: 1px solid #ddd; padding: 8px;">[data]</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+Return ONLY the formatted HTML, no explanations. Ensure all tables are properly formatted with the exact structure shown above."""
+
+            formatted_content = await llm.apredict(prompt)
             
-            # Format the message with HTML paragraph tags
-            message_html = f'<p>{message}</p>'
+            # Ensure proper wrapping if LLM didn't provide it
+            if not formatted_content.strip().startswith('<div'):
+                formatted_content = f'''
+                    <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+                        {formatted_content}
+                    </div>
+                '''
             
-            # Handle file upload if provided
-            if file_content and file_name:
-                try:
-                    # Step 1: Request file upload URL
-                    pre_upload_response = await self.session.post(
-                        f"{self.base_url}/api/v1/courses/{course_id}/files",
-                        headers=self.headers,
-                        json={
-                            'name': file_name,
-                            'size': len(file_content),
-                            'content_type': 'application/octet-stream',
-                            'parent_folder_path': 'announcement_uploads'
-                        }
-                    )
-                    
-                    if pre_upload_response.status != 200:
-                        logger.error(f"Failed to get upload URL: {await pre_upload_response.text()}")
-                        return {"error": "Failed to get file upload URL"}
-                        
-                    upload_data = await pre_upload_response.json()
-                    upload_url = upload_data.get('upload_url')
-                    
-                    if not upload_url:
-                        return {"error": "No upload URL provided by Canvas"}
-                    
-                    # Step 2: Upload file content
-                    form = aiohttp.FormData()
-                    form.add_field('file', 
-                                 file_content,
-                                 filename=file_name,
-                                 content_type='application/octet-stream')
-                    
-                    async with self.session.post(
-                        upload_url,
-                        headers={'Authorization': self.headers['Authorization']},
-                        data=form
-                    ) as upload_response:
-                        if upload_response.status in [200, 201]:
-                            file_data = await upload_response.json()
-                            file_id = file_data.get('id')
-                            
-                            # Step 3: Get file info to get the proper URL
-                            async with self.session.get(
-                                f"{self.base_url}/api/v1/files/{file_id}",
-                                headers=self.headers
-                            ) as file_info_response:
-                                if file_info_response.status == 200:
-                                    file_info = await file_info_response.json()
-                                    file_url = file_info.get('url')
-                                    if file_url:
-                                        message_html += (
-                                            f'\n\n<p>Attached file: <a href="{file_url}" '
-                                            f'target="_blank">{file_name}</a></p>'
-                                        )
-                                else:
-                                    logger.error("Failed to get file info")
-                        else:
-                            logger.error(f"File upload failed: {await upload_response.text()}")
-                            return {"error": "Failed to upload file"}
-                            
-                except Exception as upload_error:
-                    logger.error(f"Error during file upload: {str(upload_error)}")
-                    return {"error": f"File upload error: {str(upload_error)}"}
+            return formatted_content.strip()
             
-            # Create the announcement
-            payload = {
-                'title': title,
-                'message': message_html,
-                'is_announcement': True,
-                'published': is_published,
-                'allow_rating': True,
-                'specific_sections': 'all',
-                'delayed_post_at': None,
-                'require_initial_post': False
-            }
-            
-            async with self.session.post(
-                f"{self.base_url}/api/v1/courses/{course_id}/discussion_topics",
-                headers=self.headers,
-                json=payload
-            ) as response:
-                if response.status == 200:
-                    result = await response.json()
-                    return {
-                        "success": True,
-                        "announcement_id": result.get('id'),
-                        "title": result.get('title'),
-                        "message": result.get('message'),
-                        "published": result.get('published')
-                    }
-                else:
-                    error_text = await response.text()
-                    logger.error(f"Failed to create announcement. Status: {response.status}, Error: {error_text}")
-                    return {"error": f"Failed to create announcement: {error_text}"}
-                    
         except Exception as e:
-            logger.error(f"Error creating announcement: {str(e)}")
-            return {"error": str(e)}
+            logger.error(f"Error formatting content with LLM: {str(e)}")
+            # Fallback basic formatting with table detection
+            try:
+                # Basic table detection and formatting
+                lines = content.split('\n')
+                formatted_lines = []
+                in_table = False
+                current_table = []
+                
+                for line in lines:
+                    if '|' in line:
+                        if not in_table:
+                            in_table = True
+                            current_table = []
+                        current_table.append(line)
+                    else:
+                        if in_table:
+                            # Format collected table
+                            table_html = self._format_basic_table('\n'.join(current_table))
+                            formatted_lines.append(table_html)
+                            in_table = False
+                            current_table = []
+                        formatted_lines.append(f'<p style="margin: 10px 0;">{line}</p>')
+                
+                # Handle any remaining table
+                if current_table:
+                    table_html = self._format_basic_table('\n'.join(current_table))
+                    formatted_lines.append(table_html)
+                
+                return f'''
+                    <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+                        {'\n'.join(formatted_lines)}
+                    </div>
+                '''
+            except:
+                # Ultimate fallback
+                return f'''
+                    <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+                        {content}
+                    </div>
+                '''
+
+    def _format_basic_table(self, table_content: str) -> str:
+        """Basic table formatting for fallback case"""
+        lines = [line.strip() for line in table_content.split('\n') if line.strip()]
+        headers = [cell.strip() for cell in lines[0].split('|')[1:-1]]
+        
+        html = '''
+        <div style="overflow-x: auto;">
+            <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
+                <thead>
+                    <tr>
+        '''
+        
+        # Add headers
+        for header in headers:
+            html += f'<th style="border: 1px solid #ddd; padding: 8px; background-color: #f5f6fa;">{header}</th>'
+        
+        html += '</tr></thead><tbody>'
+        
+        # Add data rows (skip header and separator rows)
+        for line in lines[2:]:
+            if not line.strip().startswith('|-'):
+                cells = [cell.strip() for cell in line.split('|')[1:-1]]
+                html += '<tr>'
+                for cell in cells:
+                    html += f'<td style="border: 1px solid #ddd; padding: 8px;">{cell}</td>'
+                html += '</tr>'
+        
+        html += '</tbody></table></div>'
+        return html
+
+    async def create_announcement(self, course_id: str, title: str, message: str, 
+                                    is_published: bool = True, file_content: bytes = None,
+                                    file_name: str = None) -> Dict[str, Any]:
+            """Create a course announcement with optional file attachment"""
+            try:
+                await self._ensure_session()
+                
+                # If title is default, generate a new one
+                if title == "Generated Content":
+                    title = await self.generate_title(message)
+                
+                # Format message using LLM
+                formatted_message = await self._format_content_with_llm(message)
+                
+                # Handle file upload if provided
+                if file_content and file_name:
+                    try:
+                        # Your existing file upload code...
+                        upload_result = await self._handle_file_upload(course_id, file_content, file_name)
+                        if upload_result.get('file_url'):
+                            # Add file link to the formatted message
+                            file_link = (
+                                f'<div style="margin-top: 20px; padding: 10px; '
+                                f'border: 1px solid #e0e0e0; border-radius: 4px;">'
+                                f'<p style="margin: 0;">Attached file: '
+                                f'<a href="{upload_result["file_url"]}" '
+                                f'target="_blank" style="color: #3498db;">{file_name}</a></p></div>'
+                            )
+                            formatted_message += file_link
+                    except Exception as upload_error:
+                        logger.error(f"Error during file upload: {str(upload_error)}")
+                        return {"error": f"File upload error: {str(upload_error)}"}
+                
+                # Create the announcement with formatted message
+                payload = {
+                    'title': title,
+                    'message': formatted_message,
+                    'is_announcement': True,
+                    'published': is_published,
+                    'allow_rating': True,
+                    'specific_sections': 'all',
+                    'delayed_post_at': None,
+                    'require_initial_post': False
+                }
+                
+                # Your existing announcement creation code...
+                async with self.session.post(
+                    f"{self.base_url}/api/v1/courses/{course_id}/discussion_topics",
+                    headers=self.headers,
+                    json=payload
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        return {
+                            "success": True,
+                            "announcement_id": result.get('id'),
+                            "title": result.get('title'),
+                            "message": result.get('message'),
+                            "published": result.get('published')
+                        }
+                    else:
+                        error_text = await response.text()
+                        logger.error(f"Failed to create announcement. Status: {response.status}, Error: {error_text}")
+                        return {"error": f"Failed to create announcement: {error_text}"}
+                        
+            except Exception as e:
+                logger.error(f"Error creating announcement: {str(e)}")
+                return {"error": str(e)}
 
     async def get_announcements(self, course_id: str) -> Dict[str, Any]:
         """Get all announcements for a course"""
