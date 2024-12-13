@@ -85,30 +85,46 @@ class RAGQueryAgent:
             ])
             
             messages = [
-                {"role": "system", "content": """You are a research assistant helping to analyze academic workshop information. 
-                Focus on extracting key details about workshops, organizers, and relevant academic content."""},
-                {"role": "user", "content": f"""
-Query: {query}
+    {
+        "role": "system", 
+        "content": """You are a highly knowledgeable research assistant analyzing document chunks to provide comprehensive answers.
+Your goal is to:
+1. Extract and synthesize key information from provided text chunks
+2. Consider the similarity scores to weigh relevance of information
+3. Provide detailed, well-structured responses
+4. Be explicit about what information comes from the chunks vs your general knowledge"""
+    },
+    {
+        "role": "user", 
+        "content": f"""Question: {query}
 
-Retrieved Document Sections:
+Retrieved Document Sections (ordered by relevance):
 {chunks_text}
 
-Please provide a concise summary following this structure:
+Please provide a comprehensive response following this structure:
 
-1. Workshop Details:
-   - Name and type of workshop
-   - Date and location
-   - Parent conference/event
+1. DIRECT ANSWER:
+   - Clear, focused answer to the question based on most relevant chunks
+   - Note which chunks support your answer (reference by similarity score)
 
-2. Key People:
-   - Workshop chairs/organizers
-   - Their affiliations
+2. KEY FINDINGS:
+   - Main points extracted from the chunks
+   - Supporting evidence and quotes where relevant
+   - Any patterns or connections between different chunks
 
-3. Additional Context:
-   - Any other relevant details about the workshop
-   - Related workshops or events mentioned
+3. ADDITIONAL CONTEXT:
+   - Relevant supplementary information from the chunks
+   - If needed, general knowledge that helps explain the findings
+   - Clear distinction between chunk information and added context
 
-Note: Only include information explicitly present in the retrieved sections."""}
+4. LIMITATIONS & CONFIDENCE:
+   - Assessment of how well the chunks answer the question
+   - Any gaps or uncertainties in the information
+   - If chunks don't provide sufficient information, explain what's missing
+
+Note: Always prioritize information from chunks with higher similarity scores.
+If the chunks don't contain enough relevant information, clearly state this and provide general knowledge while explicitly marking it as such."""
+    }
             ]
             
             response = self.client.chat.completions.create(
