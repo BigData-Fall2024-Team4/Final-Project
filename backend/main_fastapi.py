@@ -33,7 +33,9 @@ supervisor = CanvasGPTSupervisor(
     aws_access_key_id=os.getenv("AWS_ACCESS_KEY_ID"),
     aws_secret_access_key=os.getenv("AWS_SECRET_ACCESS_KEY"),
     s3_bucket_name=os.getenv("S3_BUCKET_NAME"),
-    s3_books_folder=os.getenv("S3_BOOKS_FOLDER")
+    s3_books_folder=os.getenv("S3_BOOKS_FOLDER"),
+    nvidia_api_key=os.getenv("NVIDIA_API_KEY"),
+    nvidia_api_url=os.getenv("NVIDIA_API_URL")
 )
 @app.post("/agent-workflow")
 async def process_message(
@@ -41,6 +43,7 @@ async def process_message(
 ):
     try:
         # Process message through supervisor
+        print(f"NVIDIA API Key present: {bool(supervisor.rag_agent and supervisor.rag_agent.api_key)}")
         result = await supervisor.process_message(
             message=request.query,
             file_content=None

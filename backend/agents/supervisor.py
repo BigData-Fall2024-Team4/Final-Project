@@ -7,8 +7,9 @@ from .canvas.post_agent import CanvasPostAgent
 import re
 from datetime import datetime, timezone, timedelta  
 import json  
-from .document_handler import DocumentHandlerAgent
-from .canvas.pdf_listing_agent import PDFListingAgent
+from .document_handler import DocumentHandlerAgent 
+from .rag.pdf_listing_agent import PDFListingAgent
+from .rag.rag_agent import RAGQueryAgent
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -31,8 +32,10 @@ class CanvasGPTSupervisor:
     """Main supervisor class for orchestrating agent interactions"""
     
     def __init__(self, openai_api_key: str, canvas_api_key: str = None, canvas_base_url: str = None,
-             aws_access_key_id: str = None, aws_secret_access_key: str = None, 
-             s3_bucket_name: str = None, s3_books_folder: str = None):
+                aws_access_key_id: str = None, aws_secret_access_key: str = None, 
+                s3_bucket_name: str = None, s3_books_folder: str = None,
+                nvidia_api_key: str = None, nvidia_api_url: str = None):
+        
         self.llm = ChatOpenAI(api_key=openai_api_key)
         self.web_agent = WebSearchAgent()
         self.canvas_agent = CanvasPostAgent(canvas_api_key, canvas_base_url) if canvas_api_key else None
@@ -40,13 +43,13 @@ class CanvasGPTSupervisor:
         self.document_handler = DocumentHandlerAgent()
         
         # Initialize PDF listing agent
-        if all([aws_access_key_id, aws_secret_access_key, s3_bucket_name, s3_books_folder]):
+        if aws_access_key_id and aws_secret_access_key and s3_bucket_name and s3_books_folder:
             try:
                 self.pdf_listing_agent = PDFListingAgent(
-                    aws_access_key_id, 
-                    aws_secret_access_key, 
-                    s3_bucket_name,
-                    s3_books_folder
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key,
+                    bucket_name=s3_bucket_name,
+                    books_folder=s3_books_folder
                 )
                 logger.info("PDF listing agent initialized successfully")
             except Exception as e:
@@ -54,6 +57,22 @@ class CanvasGPTSupervisor:
                 self.pdf_listing_agent = None
         else:
             self.pdf_listing_agent = None
+            logger.warning("PDF listing agent not initialized - missing AWS credentials")
+
+        # Initialize RAG query agent with NVIDIA credentials
+        try:
+            if nvidia_api_key and nvidia_api_url:
+                self.rag_agent = RAGQueryAgent(
+                    api_key=nvidia_api_key,
+                    api_url=nvidia_api_url
+                )
+                logger.info("RAG query agent initialized successfully")
+            else:
+                logger.warning("RAG query agent not initialized - missing NVIDIA credentials")
+                self.rag_agent = None
+        except Exception as e:
+            logger.error(f"Failed to initialize RAG query agent: {str(e)}")
+            self.rag_agent = None
 
         self.pending_quiz = None
         self.pending_announcement = None
@@ -109,61 +128,45 @@ class CanvasGPTSupervisor:
 
     async def _route_message(self, message: str) -> str:
         """Determine which agent should handle the message"""
-        if message.lower().strip() == "show pdfs":
+        # Convert message to lowercase for comparison
+        message_lower = message.lower().strip()
+        
+        # Check for specific commands first
+        if message_lower == "show pdfs":
+            logger.info("Routing to PDF listing agent")
             return "pdf_listing"
-        # First check explicitly for file upload before using GPT
-        if "with the file uploaded" in message.lower():
-            logger.info("File upload detected, routing to appropriate handler")
-            message_lower = message.lower()
             
-            # Updated routing logic for file uploads
-            if ('create an assignment' in message_lower or 
-                'post assignment' in message_lower or 
-                'assignment where' in message_lower):
-                self.state.context['post_type'] = 'assignment'
-                logger.info("Assignment with file upload detected")
-            elif 'as a page' in message_lower:
-                self.state.context['post_type'] = 'page'
-            elif 'as a quiz' in message_lower:
-                self.state.context['post_type'] = 'quiz'
-            else:
-                self.state.context['post_type'] = 'announcement'
-            
-            # Extract text content if present
-            if "Assignment:" in message:
-                assignment_match = re.search(r'Assignment:(.*?)(?=$)', message, re.DOTALL)
-                if assignment_match:
-                    self.state.context["assignment_text"] = assignment_match.group(1).strip()
-                    
-            logger.info(f"Document handler route detected. Post type: {self.state.context.get('post_type')}")
-            return self.state.context.get('post_type')
+        if message_lower.startswith("query the pdf["):
+            logger.info("Routing to RAG query agent")
+            return "rag_query"
 
-        # Rest of the routing logic remains the same...
+        # For other messages, use LLM for routing
         routing_prompt = f"""
         Given the following message, determine if it requires:
-        1. canvas_page - If it contains 'as a page', 'create page', or any reference to pages
-        2. canvas_assignment - If it mentions creating or generating an assignment
-        3. canvas_quiz - If it mentions creating or generating a quiz
-        4. canvas_list - If it asks about available courses or course listing
-        5. web_search - If it contains a URL or asks for web content
-        6. canvas_post - If it mentions posting to Canvas or course announcements
-        7. general - For general queries
+        1. rag_query - If it mentions querying PDFs or searching through documents
+        2. canvas_page - If it contains 'as a page', 'create page', or any reference to pages
+        3. canvas_assignment - If it mentions creating or generating an assignment
+        4. canvas_quiz - If it mentions creating or generating a quiz
+        5. canvas_list - If it asks about available courses or course listing
+        6. web_search - If it contains a URL or asks for web content
+        7. canvas_post - If it mentions posting to Canvas or course announcements
+        8. general - For general queries
 
         Message: {message}
         
-            Reply with either 'canvas_page', 'canvas_assignment', 'canvas_quiz', 'canvas_list', 'web_search', 'canvas_post', or 'general' only.
-            Consider these in order:
-            1. If the message contains 'as a page' or mentions pages -> 'canvas_page'
-            2. If the message contains 'create an assignment' -> 'canvas_assignment'
-            3. If the message mentions creating a quiz -> 'canvas_quiz'
-            4. If the message asks about listing courses -> 'canvas_list'
-            5. If the message contains a URL -> 'web_search'
-            6. If the message mentions posting to Canvas -> 'canvas_post'
-            7. Otherwise -> 'general'
-            """
+        Reply with either 'rag_query', 'canvas_page', 'canvas_assignment', 'canvas_quiz', 'canvas_list', 'web_search', 'canvas_post', or 'general' only.
+        
+        If the message contains any reference to searching documents, PDFs, or querying content, choose 'rag_query'.
+        """
 
-        response = await self.llm.apredict(routing_prompt)
-        return response.strip().lower()   
+        try:
+            response = await self.llm.ainvoke(routing_prompt)
+            route = response.strip().lower()
+            logger.info(f"LLM routed message to: {route}")
+            return route
+        except Exception as e:
+            logger.error(f"Error in LLM routing: {str(e)}")
+            return "general"   
 
 
 
@@ -231,15 +234,15 @@ class CanvasGPTSupervisor:
                     "filename": file_result["filename"]
                 })
 
-            # Route the message
-            route = await self._route_message(message)
-            logger.info(f"Message routed to: {route}")
-
             try:
+                # Route the message
+                route = await self._route_message(message)
+                logger.info(f"Message routed to: {route}")
+
                 # Initialize context
                 context = self._get_conversation_context(message)
 
-                # Handle different routes based on message type and content
+                # Special handling for pdf listing and RAG queries
                 if route == "pdf_listing":
                     if not self.pdf_listing_agent:
                         response = {
@@ -248,7 +251,44 @@ class CanvasGPTSupervisor:
                             "conversation_id": id(self.state)
                         }
                     else:
-                        response = await self.pdf_listing_agent.process_request(message)
+                        result = await self.pdf_listing_agent.list_book_folders()
+                        if result["success"]:
+                            folders_text = "\n".join([
+                                f"- {folder.name} (Last modified: {folder.last_modified})"
+                                for folder in result["folders"]
+                            ])
+                            response = {
+                                "response": f"Available PDF folders:\n{folders_text}\n\nTotal folders: {result['total_folders']}",
+                                "agent": "pdf_listing",
+                                "conversation_id": id(self.state),
+                                "success": True
+                            }
+                        else:
+                            response = {
+                                "response": f"Error listing PDFs: {result.get('error', 'Unknown error')}",
+                                "agent": "pdf_listing",
+                                "conversation_id": id(self.state),
+                                "success": False
+                            }
+
+                elif route == "rag_query":
+                    logger.info(f"RAG Agent exists: {self.rag_agent is not None}")
+                    if not self.rag_agent:
+                        logger.error("RAG query agent is None - Check NVIDIA API key")
+                        response = {
+                            "response": "RAG query agent is not configured properly.",
+                            "agent": "rag_query",
+                            "conversation_id": id(self.state)
+                        }
+                    else:
+                        result = await self.rag_agent.process_query(message)
+                        response = {
+                            "response": result["response"],
+                            "agent": "rag_query",
+                            "conversation_id": id(self.state),
+                            "embedding": result.get("embedding"),
+                            "success": result["success"]
+                        }
 
                 # Handle file upload cases
                 elif file_content:
