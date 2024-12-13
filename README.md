@@ -23,7 +23,6 @@ CanvasGPT is an innovative AI-powered application designed to transform how prof
 - **Azure Cloud Storage**: Secure file storage and document management
 - **Snowflake DB**: Structured data storage for course and user information
 - **Pinecone**: Vector database for semantic search and document retrieval
-- **Docling**: Parsing documents and extracting structured information. 
 - **Apache Airflow**: Orchestration of ETL pipelines and scheduling tasks
 - **LlamaParser**: Document parsing and text extraction from various formats
 - **Docker**: Application containerization and environment standardization
@@ -121,11 +120,54 @@ Please follow the detail intrction on how can one generate a token on CANVAS LMS
 
 ## GCP DEPLOYMENT
 
-Airflow : https://34.162.53.77:8080/
+Airflow : http://34.162.53.77:8080/
 
-Fastapi : https://34.162.53.77:8000/
+Fastapi : http://34.162.53.77:8000/
 
 Working Video link: https://drive.google.com/file/d/1p2aXtTxx_lKQm0P9EeUD-YhpTGqR-3kD/view?usp=sharing
+
+## Cloud Development Setup
+
+In Final-Project/chrome_extension/popup.js change the localhost endpoint to http://34.162.53.77:8000/agent-workflow
+```bash
+async function sendMessage() {
+        try {
+            const message = messageInput.value.trim();
+            if (!message && !selectedFile) return;
+
+            // Add user message to chat
+            await addMessageToChat('user', message);
+            messageInput.value = '';
+
+            let response;
+
+            if (selectedFile) {
+                // If there's a file, use FormData
+                const formData = new FormData();
+                formData.append('message', message);
+                formData.append('file', selectedFile);
+
+                response = await fetch('http://34.162.53.77:8000/agent-workflow/form', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                // Clear file selection
+                fileNameDisplay.textContent = '';
+                selectedFile = null;
+            } else {
+                // Regular text message - use JSON format
+                response = await fetch('http://34.162.53.77:8000//agent-workflow', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        query: message
+                    })
+                });
+            }
+```
 
 ## Local Development Setup
 
