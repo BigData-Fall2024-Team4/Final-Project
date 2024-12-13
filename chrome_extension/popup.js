@@ -48,26 +48,6 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Word-by-Word Rendering Function
-    function renderWordByWord(element, text) {
-        const words = text.split(' ');
-        let currentWord = 0;
-        element.textContent = '';
-
-        function addNextWord() {
-            if (currentWord < words.length) {
-                element.textContent += (currentWord > 0 ? ' ' : '') + words[currentWord];
-                currentWord++;
-                
-                // Adjust speed dynamically (20-50ms per word)
-                const speed = Math.max(20, Math.min(50, 1000 / words.length));
-                setTimeout(addNextWord, speed);
-            }
-        }
-
-        addNextWord();
-    }
-
     // Load chat history when popup opens
     loadChatHistory();
 
@@ -223,12 +203,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // Format message if it's from bot
         if (sender === 'bot') {
             contentDiv.innerHTML = formatResponse(message);
-            
-            // Apply word-by-word rendering for bot messages
-            const paragraphs = contentDiv.querySelectorAll('p');
-            paragraphs.forEach(paragraph => {
-                renderWordByWord(paragraph, paragraph.textContent);
-            });
         } else {
             contentDiv.textContent = message;
         }
@@ -290,12 +264,6 @@ document.addEventListener('DOMContentLoaded', function() {
             // Format message if it's from bot
             if (msg.sender === 'bot') {
                 contentDiv.innerHTML = formatResponse(msg.message);
-                
-                // Apply word-by-word rendering for bot messages in history
-                const paragraphs = contentDiv.querySelectorAll('p');
-                paragraphs.forEach(paragraph => {
-                    renderWordByWord(paragraph, paragraph.textContent);
-                });
             } else {
                 contentDiv.textContent = msg.message;
             }
