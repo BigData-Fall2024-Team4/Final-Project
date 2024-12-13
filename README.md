@@ -158,6 +158,8 @@ PINECONE_API_KEY=''           # Your Pinecone API Key for authentication
 PINECONE_ENVIRONMENT=''       # Your Pinecone environment (e.g., us-west1-gcp)
 PINECONE_INDEX_NAME=''        # Name of the Pinecone index to use
 
+# LlamaParse API
+LLAMAPARSE_API_KEY=''        # Your LlamaParse API Key for authentication
 
 # Canvas LMS API 
 CANVAS_API_KEY=''            # Your Canvas API Key for authentication
