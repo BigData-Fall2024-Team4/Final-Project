@@ -5,8 +5,7 @@
 ### Goal of the Project
 - Automate routine administrative tasks in Canvas LMS to reduce time burden
 - Implement intelligent content organization across course sections
-- Streamline creation and management of course announcements
-- Optimize grading workflow efficiency
+- Creation and management of course announcements
 - Enhance content discovery and reusability
 - Process and integrate academic materials from research databases
 - Improve overall teaching productivity through AI assistance
