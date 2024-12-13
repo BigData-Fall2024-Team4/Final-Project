@@ -99,8 +99,15 @@ class DocumentHandlerAgent:
                 "content": None
             }
 
-    async def process_file(self, file: BinaryIO, filename: str) -> Dict[str, Any]:
-        """Process uploaded file and extract its content"""
+    async def process_file(self, file: BinaryIO, filename: str, extract_mode: bool = False) -> Dict[str, Any]:
+        """
+        Process uploaded file and optionally extract its content
+        
+        Args:
+            file: The file object
+            filename: Name of the file
+            extract_mode: Whether to use LlamaParse for extraction
+        """
         try:
             # Read the file content
             file_content = file.read()
@@ -113,8 +120,9 @@ class DocumentHandlerAgent:
                     "content": None
                 }
             
-            # Extract content using LlamaParse
-            if self.llamaparse_api_key:
+            # Only use LlamaParse if in extract mode
+            if extract_mode and self.llamaparse_api_key:
+                logger.info("Extracting content using LlamaParse")
                 extraction_result = await self.extract_content_with_llamaparse(file_content, filename)
                 if extraction_result["success"]:
                     formatted_content = extraction_result["content"]
@@ -128,8 +136,9 @@ class DocumentHandlerAgent:
                     }
                 else:
                     logger.error(f"Content extraction failed: {extraction_result.get('error')}")
-                    
-            # Fallback to returning raw content if extraction fails or no API key
+            
+            # Return raw content for non-extract mode or if extraction fails
+            logger.info("Returning raw file content without extraction")
             return {
                 "success": True,
                 "content": file_content,

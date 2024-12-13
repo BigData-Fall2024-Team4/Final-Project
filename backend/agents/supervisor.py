@@ -252,7 +252,8 @@ class CanvasGPTSupervisor:
                 logger.info("Processing extraction request")
                 file_result = await self.document_handler.process_file(
                     file_content["file"],
-                    file_content["filename"]
+                    file_content["filename"],
+                    extract_mode=True
                 )
                 
                 if not file_result["success"]:
@@ -376,7 +377,8 @@ class CanvasGPTSupervisor:
                         logger.info("Processing simple extraction request")
                         file_result = await self.document_handler.process_file(
                             file_content["file"],
-                            file_content["filename"]
+                            file_content["filename"],
+                            extract_mode=False 
                         )
                         
                         if not file_result["success"]:
