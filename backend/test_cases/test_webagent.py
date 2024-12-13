@@ -5,7 +5,7 @@ import pytest
 def query_web_agent(url: str, question: Optional[str] = None) -> Dict[str, Any]:
     """
     Query the web agent with a URL and optional question.
-    Returns a dictionary with status code and a default response.
+    Simulates different endpoint interactions.
     
     Args:
         url (str): The URL to query
@@ -15,18 +15,46 @@ def query_web_agent(url: str, question: Optional[str] = None) -> Dict[str, Any]:
         Dict[str, Any]: A dictionary containing status code and response
     """
     try:
-        # Construct the query
-        if question:
-            query = f"{question} {url}"
-        else:
-            query = url
+        # Simulate different endpoint interactions based on presence of question and file
+        endpoints = [
+            "http://localhost:8000/agent-workflow",  # Default text query
+            "http://localhost:8000/agent-workflow/form",  # Form data endpoint
+            "http://localhost:8000/reset-supervisor"  # Reset endpoint
+        ]
         
-        # Return a mock response
+        # Construct payload
+        payload = {
+            "query": question if question else url,
+            "url": url
+        }
+        
+        # Simulate POST request to different endpoints
+        responses = []
+        for endpoint in endpoints:
+            try:
+                response = requests.post(
+                    endpoint, 
+                    json=payload,
+                    headers={"Content-Type": "application/json"}
+                )
+                responses.append({
+                    "endpoint": endpoint,
+                    "status_code": response.status_code,
+                    "response": response.json() if response.ok else response.text
+                })
+            except Exception as e:
+                responses.append({
+                    "endpoint": endpoint,
+                    "status_code": 500,
+                    "error": str(e)
+                })
+        
         return {
             "status_code": 200,
             "url": url,
             "question": question,
-            "response": "This is a default text response. No actual web query was made."
+            "responses": responses,
+            "response": "Simulated multi-endpoint query"
         }
     
     except Exception as e:
@@ -37,47 +65,108 @@ def query_web_agent(url: str, question: Optional[str] = None) -> Dict[str, Any]:
             "error": str(e)
         }
 
-# Pytest test cases
-def test_query_web_agent_with_question():
-    url = "https://example.com"
-    question = "What is this website about?"
-    
-    result = query_web_agent(url, question)
-    
-    assert result['status_code'] == 200
-    assert result['url'] == url
-    assert result['question'] == question
-    assert 'response' in result
+# Test Cases for Web Agent Queries
+class TestWebAgentQueries:
+    def test_agent_workflow_endpoint(self):
+        """Test the main agent workflow endpoint"""
+        url = "https://example.com"
+        question = "What is this website about?"
+        
+        result = query_web_agent(url, question)
+        
+        assert result['status_code'] == 200
+        assert result['url'] == url
+        assert result['question'] == question
+        assert 'responses' in result
+        
+        # Check if agent-workflow endpoint was called
+        workflow_responses = [
+            resp for resp in result['responses'] 
+            if "agent-workflow" in resp['endpoint']
+        ]
+        assert len(workflow_responses) > 0
 
-def test_query_web_agent_without_question():
-    url = "https://example.com"
-    
-    result = query_web_agent(url)
-    
-    assert result['status_code'] == 200
-    assert result['url'] == url
-    assert result['question'] is None
-    assert 'response' in result
+    def test_form_data_endpoint(self):
+        """Test the form data endpoint"""
+        url = "https://example.com/upload"
+        question = "Process this document"
+        
+        result = query_web_agent(url, question)
+        
+        assert result['status_code'] == 200
+        assert result['url'] == url
+        
+        # Check if form endpoint was called
+        form_responses = [
+            resp for resp in result['responses'] 
+            if "agent-workflow/form" in resp['endpoint']
+        ]
+        assert len(form_responses) > 0
 
-# Optional: Main function for demonstration
+    def test_reset_supervisor_endpoint(self):
+        """Test the reset supervisor endpoint"""
+        url = "http://localhost:8000/reset-supervisor"
+        
+        result = query_web_agent(url)
+        
+        assert result['status_code'] == 200
+        
+        # Check if reset endpoint was called
+        reset_responses = [
+            resp for resp in result['responses'] 
+            if "reset-supervisor" in resp['endpoint']
+        ]
+        assert len(reset_responses) > 0
+
+    def test_multiple_endpoint_interactions(self):
+        """
+        Test scenario with multiple endpoint interactions
+        Simulating a conversation flow
+        """
+        test_scenarios = [
+            {
+                "url": "https://news.northeastern.edu/2024/10/29/commencement-2025-fenway-park/",
+                "questions": [
+                    "Details about the commencement",
+                    "Location specifics"
+                ]
+            },
+            {
+                "url": "https://www.example.com/document",
+                "questions": [
+                    "Summarize the document",
+                    "Key points"
+                ]
+            }
+        ]
+        
+        for scenario in test_scenarios:
+            for question in scenario['questions']:
+                result = query_web_agent(scenario['url'], question)
+                
+                assert result['status_code'] == 200
+                assert len(result['responses']) > 0
+                
+                # Validate all endpoint interactions
+                endpoints_called = [
+                    resp['endpoint'] for resp in result['responses']
+                ]
+                assert any("agent-workflow" in ep for ep in endpoints_called)
+
+# Main function for demonstration
 def main():
-    # Test cases
     test_cases = [
         {
             "url": "https://news.northeastern.edu/2024/10/29/commencement-2025-fenway-park/",
             "question": "When and where is the commencement ceremony?"
         },
         {
-            "url": "https://news.northeastern.edu/2024/10/29/commencement-2025-fenway-park/",
+            "url": "http://localhost:8000/reset-supervisor",
             "question": None
-        },
-        {
-            "url": "https://www.python.org/about/",
-            "question": "What are the key features of Python?"
         }
     ]
     
-    print("\nStarting Web Agent Tests...")
+    print("\nStarting Web Agent Endpoint Tests...")
     
     for case in test_cases:
         result = query_web_agent(case['url'], case['question'])
@@ -85,7 +174,9 @@ def main():
         print(f"URL: {result['url']}")
         print(f"Question: {result.get('question', 'No question')}")
         print(f"Status Code: {result['status_code']}")
-        print(f"Response: {result.get('response', result.get('error', 'No response'))}")
+        print("Endpoint Responses:")
+        for resp in result.get('responses', []):
+            print(f"  - {resp.get('endpoint')}: {resp.get('status_code')}")
         print("="*80)
     
     print("\nTests completed!")
