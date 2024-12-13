@@ -1,5 +1,6 @@
 let selectedFile = null;
 let conversationId = null;
+let waitingMessageElement = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     const chatContainer = document.getElementById('chat-container');
@@ -9,6 +10,43 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearButton = document.getElementById('clear-btn');
     const fileInput = document.getElementById('file-input');
     const fileNameDisplay = document.getElementById('file-name');
+
+    // Function to show waiting message
+    function showWaitingMessage() {
+        // Remove any existing waiting message
+        if (waitingMessageElement) {
+            waitingMessageElement.remove();
+        }
+
+        // Create waiting message element
+        waitingMessageElement = document.createElement('div');
+        waitingMessageElement.classList.add('message', 'bot-message', 'waiting-message');
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.classList.add('message-content');
+        contentDiv.innerHTML = '<p>Working on it...</p>';
+        
+        const senderLabel = document.createElement('div');
+        senderLabel.classList.add('sender-label');
+        senderLabel.textContent = 'Assistant';
+        
+        waitingMessageElement.appendChild(senderLabel);
+        waitingMessageElement.appendChild(contentDiv);
+        
+        // Append to chat container
+        chatContainer.appendChild(waitingMessageElement);
+        
+        // Auto-scroll to bottom
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Function to remove waiting message
+    function removeWaitingMessage() {
+        if (waitingMessageElement) {
+            waitingMessageElement.remove();
+            waitingMessageElement = null;
+        }
+    }
 
     // Load chat history when popup opens
     loadChatHistory();
@@ -86,6 +124,9 @@ document.addEventListener('DOMContentLoaded', function() {
             await addMessageToChat('user', message);
             messageInput.value = '';
 
+            // Show waiting message
+            showWaitingMessage();
+
             let response;
 
             if (selectedFile) {
@@ -115,6 +156,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
 
+            // Remove waiting message
+            removeWaitingMessage();
+
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error('Server Error:', errorData);
@@ -134,6 +178,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Error:', error);
+            
+            // Remove waiting message if there's an error
+            removeWaitingMessage();
+            
             await addMessageToChat('bot', 'Sorry, there was an error processing your request. Please try again.');
         }
     }

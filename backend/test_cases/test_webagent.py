@@ -2,9 +2,6 @@ import requests
 from typing import Optional, Dict, Any
 import pytest
 
-# Function to query the web agent with a URL and optional question
-# Simulates interactions with multiple endpoints
-
 def query_web_agent(url: str, question: Optional[str] = None) -> Dict[str, Any]:
     try:
         endpoints = [
@@ -54,9 +51,7 @@ def query_web_agent(url: str, question: Optional[str] = None) -> Dict[str, Any]:
             "error": str(e)
         }
 
-# Class to test the web agent's query functionality
 class TestWebAgentQueries:
-    # Test the main agent workflow endpoint
     def test_agent_workflow_endpoint(self):
         url = "https://example.com"
         question = "What is this website about?"
@@ -74,7 +69,6 @@ class TestWebAgentQueries:
         ]
         assert len(workflow_responses) > 0
 
-    # Test the form data endpoint
     def test_form_data_endpoint(self):
         url = "https://example.com/upload"
         question = "Process this document"
@@ -90,7 +84,6 @@ class TestWebAgentQueries:
         ]
         assert len(form_responses) > 0
 
-    # Test the reset supervisor endpoint
     def test_reset_supervisor_endpoint(self):
         url = "http://34.162.53.77:8000/reset-supervisor"
         
@@ -104,7 +97,6 @@ class TestWebAgentQueries:
         ]
         assert len(reset_responses) > 0
 
-    # Test multiple endpoint interactions with various scenarios
     def test_multiple_endpoint_interactions(self):
         test_scenarios = [
             {
@@ -135,7 +127,6 @@ class TestWebAgentQueries:
                 ]
                 assert any("agent-workflow" in ep for ep in endpoints_called)
 
-# Main function to demonstrate and run web agent tests
 def main():
     test_cases = [
         {
