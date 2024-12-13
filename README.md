@@ -122,7 +122,10 @@ Please follow the detail intrction on how can one generate a token on CANVAS LMS
 ## GCP DEPLOYMENT
 
 Airflow : https://34.162.53.77:8080/
+
 Fastapi : https://34.162.53.77:8000/
+
+Working Video link: https://drive.google.com/file/d/1p2aXtTxx_lKQm0P9EeUD-YhpTGqR-3kD/view?usp=sharing
 
 ## Local Development Setup
 
