@@ -37,19 +37,23 @@ class QuizAgent:
         """Parse pre-formatted quiz questions using line by line approach"""
         try:
             questions = []
-            quiz_settings = {'time_limit': 30}  # Set default time limit to 30 minutes
+            quiz_settings = {}  # Initialize settings without default time limit
             
             # First check for time limit in the entire content
             time_limit_match = re.search(r"Time limit:\s*(\d+)", content)
             if time_limit_match:
                 quiz_settings['time_limit'] = int(time_limit_match.group(1))
                 logger.info(f"Found time limit: {quiz_settings['time_limit']} minutes")
+            else:
+                quiz_settings['time_limit'] = None
+                logger.warning("No time limit specified in quiz content")
 
             # Split content into lines after Questions: marker
             try:
                 lines = content.split("Questions:")[1].strip().split("\n")
             except IndexError:
-                lines = content.strip().split("\n")  # Try without "Questions:" marker
+                logger.error("Failed to find 'Questions:' section in content")
+                return [], quiz_settings
 
             current_question = None
             current_options = []
@@ -93,7 +97,7 @@ class QuizAgent:
                     continue
 
                 # Start collecting options
-                if line == "Options:" or line.startswith("Options:"):
+                if line == "Options:":
                     collecting_options = True
                     i += 1
                     continue
@@ -153,6 +157,7 @@ class QuizAgent:
             
             # Log parsing results
             logger.info(f"Parsed {len(questions)} questions, total points: {total_points}")
+            logger.info(f"Quiz settings: {quiz_settings}")
             
             return questions, quiz_settings
 
@@ -161,7 +166,7 @@ class QuizAgent:
             logger.error(f"Content: {content}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
-            return [], {'time_limit': 30, 'points_possible': 0}  # Return default settings
+            return [], {'time_limit': None}
     
     def _format_question(self, question_text: str, options: List[tuple], 
                         correct_letter: str = None, points: int = 1) -> Dict[str, Any]:
@@ -196,7 +201,7 @@ class QuizAgent:
         title: str,
         description: str = "",
         quiz_type: str = "assignment",
-        time_limit: Optional[int] = None,
+        time_limit: Optional[int] = '',
         allowed_attempts: int = 1,
         points_possible: int = 100,
         published: bool = False
@@ -211,6 +216,7 @@ class QuizAgent:
                     "title": title,
                     "description": description,
                     "quiz_type": quiz_type,
+                    "time_limit": time_limit,
                     "allowed_attempts": allowed_attempts,
                     "points_possible": points_possible,
                     "published": published,
@@ -224,10 +230,6 @@ class QuizAgent:
                     "access_code": None  # No access code required
                 }
             }
-
-            # Only include time_limit if it's not None
-            if time_limit is not None:
-                quiz_data["quiz"]["time_limit"] = time_limit
 
             async with self.session.post(
                 f"{self.base_url}/api/v1/courses/{course_id}/quizzes",
@@ -313,77 +315,6 @@ class QuizAgent:
             logger.error(f"Error publishing quiz: {str(e)}")
             return {"error": str(e)}
 
-    async def create_formatted_quiz(
-        self,
-        course_id: str,
-        title: str,
-        content: str,
-        description: str = "Pre-formatted quiz questions",
-        publish: bool = True
-    ) -> Dict[str, Any]:
-        """Create a quiz from pre-formatted questions"""
-        try:
-            # Parse the formatted questions
-            questions = self.parse_structured_quiz(content)
-            
-            if not questions:
-                return {
-                    "success": False,
-                    "message": "No valid questions could be parsed from the content"
-                }
-
-            # Create the quiz
-            quiz = await self.create_quiz(
-                course_id=course_id,
-                title=title[:80],  # Ensure title length limit
-                description=description,
-                points_possible=sum(q['points_possible'] for q in questions),
-                time_limit=30,  # Default time limit
-                published=False
-            )
-            
-            if isinstance(quiz, dict) and quiz.get('error'):
-                return {
-                    "success": False,
-                    "message": f"Error creating quiz: {quiz['error']}"
-                }
-                
-            if not quiz or not isinstance(quiz, dict) or 'id' not in quiz:
-                return {
-                    "success": False,
-                    "message": "Failed to create quiz: Invalid response from Canvas"
-                }
-
-            quiz_id = quiz['id']
-            
-            # Add all questions
-            for question in questions:
-                result = await self.add_question(course_id, quiz_id, question)
-                if isinstance(result, dict) and result.get('error'):
-                    logger.error(f"Error adding question: {result['error']}")
-
-            # Publish if requested
-            if publish:
-                publish_result = await self.publish_quiz(course_id, quiz_id)
-                if isinstance(publish_result, dict) and publish_result.get('error'):
-                    logger.error(f"Error publishing quiz: {publish_result['error']}")
-
-            return {
-                "success": True,
-                "message": f"Successfully created quiz with {len(questions)} questions",
-                "quiz_id": quiz_id,
-                "question_count": len(questions),
-                "points_possible": sum(q['points_possible'] for q in questions),
-                "quiz_data": quiz
-            }
-
-        except Exception as e:
-            logger.error(f"Error creating formatted quiz: {str(e)}")
-            return {
-                "success": False,
-                "message": f"Error creating formatted quiz: {str(e)}"
-            }
-
     async def get_quiz(self, course_id: str, quiz_id: str) -> Dict[str, Any]:
         """Get quiz details"""
         try:
@@ -404,6 +335,78 @@ class QuizAgent:
         except Exception as e:
             logger.error(f"Error getting quiz: {str(e)}")
             return {"error": str(e)}
+
+    async def create_formatted_quiz(
+    self,
+    course_id: str,
+    title: str,
+    content: str,
+    description: str = "Pre-formatted quiz questions",
+    publish: bool = True
+) -> Dict[str, Any]:
+        """Create a quiz from pre-formatted questions"""
+        try:
+            # Parse the formatted questions and settings
+            questions, quiz_settings = self.parse_formatted_questions(content)
+            
+            if not questions:
+                return {
+                    "success": False,
+                    "message": "No valid questions could be parsed from the content"
+                }
+
+            # Check if time limit was provided
+            if quiz_settings.get('time_limit') is None:
+                return {
+                    "success": False,
+                    "message": "Time limit is required. Please specify the time limit in minutes using 'Time limit: X' in your quiz content.",
+                    "needs_time_limit": True  # Add this flag to indicate time limit is needed
+                }
+
+            # Create the quiz with parsed settings
+            quiz = await self.create_quiz(
+                course_id=course_id,
+                title=title[:80],  # Ensure title length limit
+                description=description,
+                points_possible=quiz_settings.get('points_possible', len(questions)),
+                time_limit=quiz_settings['time_limit'],  # Use the parsed time limit
+                published=False
+            )
+            
+            if "error" in quiz:
+                return {
+                    "success": False,
+                    "message": f"Error creating quiz: {quiz['error']}"
+                }
+            
+            quiz_id = quiz["id"]
+            
+            # Add all questions
+            for question in questions:
+                result = await self.add_question(course_id, quiz_id, question)
+                if "error" in result:
+                    logger.error(f"Error adding question: {result['error']}")
+
+            # Publish if requested
+            if publish:
+                await self.publish_quiz(course_id, quiz_id)
+
+            return {
+                "success": True,
+                "message": f"Successfully created quiz with {len(questions)} questions",
+                "quiz_id": quiz_id,
+                "question_count": len(questions),
+                "points_possible": quiz_settings.get('points_possible'),
+                "time_limit": quiz_settings['time_limit'],
+                "quiz_data": quiz
+            }
+
+        except Exception as e:
+            logger.error(f"Error creating formatted quiz: {str(e)}")
+            return {
+                "success": False,
+                "message": f"Error creating formatted quiz: {str(e)}"
+            }
 
     async def update_quiz_settings(
         self,
