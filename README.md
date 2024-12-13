@@ -117,6 +117,8 @@ If you want to create a canvas account for Teacher please follow this:[Sign Up f
 **Generate Token on Canvas LMS API**
 Please follow the detail intrction on how can one generate a token on CANVAS LMS: [Generate Token for CANVAS LMS](https://community.canvaslms.com/t5/Canvas-Basics-Guide/How-do-I-manage-API-access-tokens-in-my-user-account/ta-p/615312)
 
+Login here to verify for general canvas infrastructure setup: https://canvas.instructure.com/login/canvas
+
 ## Sample Template for Examples:
 
 
