@@ -62,12 +62,13 @@ class CanvasGPTSupervisor:
 
         # Initialize RAG query agent with NVIDIA credentials
         try:
-            if all([nvidia_api_key, nvidia_api_url, pinecone_api_key, pinecone_index_name]):
+            if all([nvidia_api_key, nvidia_api_url, pinecone_api_key, pinecone_index_name,openai_api_key]):
                 self.rag_agent = RAGQueryAgent(
                     api_key=nvidia_api_key,
                     api_url=nvidia_api_url,
                     pinecone_api_key=pinecone_api_key,
                     pinecone_index_name=pinecone_index_name,
+                    openai_api_key=openai_api_key
                 )
                 logger.info("RAG query agent initialized successfully")
             else:
@@ -368,12 +369,11 @@ class CanvasGPTSupervisor:
                     else:
                         result = await self.pdf_listing_agent.list_book_folders()
                         if result["success"]:
-                            folders_text = "\n".join([
-                                f"- {folder.name} (Last modified: {folder.last_modified})"
-                                for folder in result["folders"]
-                            ])
+                            formatted_text = result["formatted_output"]
+                            # Ensure proper line breaks are preserved
+                            formatted_text = formatted_text.replace('\n', '\n')  # Force line break preservation
                             response = {
-                                "response": f"Available PDF folders:\n{folders_text}\n\nTotal folders: {result['total_folders']}",
+                                "response": f"```markdown\n{formatted_text}\n```",  # Wrap in markdown code block
                                 "agent": "pdf_listing",
                                 "conversation_id": id(self.state),
                                 "success": True
@@ -393,17 +393,35 @@ class CanvasGPTSupervisor:
                         response = {
                             "response": "RAG query agent is not configured properly.",
                             "agent": "rag_query",
-                            "conversation_id": id(self.state)
+                            "conversation_id": id(self.state),
+                            "success": False
                         }
                     else:
-                        result = await self.rag_agent.process_query(message)
-                        response = {
-                            "response": result["response"],
-                            "agent": "rag_query",
-                            "conversation_id": id(self.state),
-                            "embedding": result.get("embedding"),
-                            "success": result["success"]
-                        }
+                        try:
+                            result = await self.rag_agent.process_query(message)
+                            
+                            # Format the response with matches if available
+                            if result["success"] and "matches" in result:
+                                response_text = result["response"] + "\n\n"
+                                response_text += "Top matching chunks:\n"
+                                for i, match in enumerate(result["matches"], 1):
+                                    response_text += f"\n{i}. Similarity: {match['score']:.3f}\n"
+                                    response_text += f"Preview: {match['text']}\n"
+                            else:
+                                response_text = result["response"]
+                                
+                            response = {
+                                "response": response_text,
+                                "agent": "rag_query",
+                                "conversation_id": id(self.state)
+                            }
+                        except Exception as e:
+                            logger.error(f"Error in RAG query processing: {e}")
+                            response = {
+                                "response": f"Error processing query: {str(e)}",
+                                "agent": "rag_query",
+                                "conversation_id": id(self.state)
+                            }
 
                 # Handle file upload cases
                 elif file_content:
