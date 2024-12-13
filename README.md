@@ -95,7 +95,7 @@ Project Proposal Video: https://www.youtube.com/watch?v=606P_Wa95QE
 ### Architecture diagram ###
 
 ![image](Architecture/images/update1.png)
-![image](Architecture/images/ariflow_design.png)
+![image](Architecture/images/airflow_flow.png)
 
 
 
