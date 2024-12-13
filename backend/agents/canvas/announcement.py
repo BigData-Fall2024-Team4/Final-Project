@@ -33,6 +33,178 @@ class AnnouncementAgent(CanvasBaseAgent):
             logger.error(f"Error generating title: {str(e)}")
             return "Generated Content"  # Fallback title
 
+
+    def _is_complex_content(self, content: str) -> bool:
+            """Detect if content needs complex formatting"""
+            complex_indicators = [
+                '|' in content and '-|-' in content,  # Tables
+                '#' in content and any(line.strip().startswith('#') for line in content.split('\n')),  # Headers
+                '```' in content,  # Code blocks
+                '- ' in content or '* ' in content,  # Lists
+                len([line for line in content.split('\n') if line.strip().startswith(('1.', '2.', '3.'))]) > 1  # Numbered lists
+            ]
+            return any(complex_indicators)
+
+    async def _format_simple_content(self, content: str) -> str:
+        """Format simple content with basic HTML"""
+        # Basic paragraph formatting for simple text
+        paragraphs = content.split('\n\n')
+        formatted_parts = []
+        
+        for paragraph in paragraphs:
+            if paragraph.strip():
+                formatted_parts.append(
+                    f'<p style="font-family: Arial, sans-serif; font-size: 14px; '
+                    f'line-height: 1.6; margin: 10px 0;">{paragraph.strip()}</p>'
+                )
+            else:
+                formatted_parts.append('<br/>')
+        
+        return '\n'.join(formatted_parts)
+
+
+    async def _format_content_with_llm(self, content: str) -> str:
+        """Use LLM to format content for Canvas announcement with improved table and typography handling"""
+        try:
+            llm = ChatOpenAI()
+            
+            prompt = f"""Format the following content for a Canvas LMS announcement, paying special attention to tables and typography.
+
+Rules for formatting:
+1. Tables:
+   - Must be enclosed in proper <table> tags
+   - Each row must use <tr> tags
+   - Headers must use <th> tags
+   - Data cells must use <td> tags
+   - Add borders and padding for readability
+   - Tables must be responsive
+
+2. Typography:
+   - Base font size should be 14px
+   - Headers should use relative sizes:
+     * h1: 20px
+     * h2: 16px
+     * h3: 12px
+   - Line height should be 1.5
+   - Use Arial or sans-serif fonts
+
+3. Structure:
+   - Each section should be clearly separated
+   - Numbered lists should use <ol> tags
+   - Add appropriate spacing between elements
+   - Preserve document hierarchy
+
+Here's the content to format:
+{content}
+
+Required HTML structure:
+<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+  [Main content here with all headers, tables, and lists properly formatted]
+</div>
+
+Tables should follow this structure:
+<div style="overflow-x: auto;">
+  <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
+    <thead>
+      <tr>
+        <th style="border: 1px solid #ddd; padding: 8px; background-color: #f5f6fa;">[header]</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="border: 1px solid #ddd; padding: 8px;">[data]</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+Return ONLY the formatted HTML, no explanations. Ensure all tables are properly formatted with the exact structure shown above."""
+
+            formatted_content = await llm.apredict(prompt)
+            
+            # Ensure proper wrapping if LLM didn't provide it
+            if not formatted_content.strip().startswith('<div'):
+                formatted_content = f'''
+                    <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+                        {formatted_content}
+                    </div>
+                '''
+            
+            return formatted_content.strip()
+            
+        except Exception as e:
+            logger.error(f"Error formatting content with LLM: {str(e)}")
+            # Fallback basic formatting with table detection
+            try:
+                # Basic table detection and formatting
+                lines = content.split('\n')
+                formatted_lines = []
+                in_table = False
+                current_table = []
+                
+                for line in lines:
+                    if '|' in line:
+                        if not in_table:
+                            in_table = True
+                            current_table = []
+                        current_table.append(line)
+                    else:
+                        if in_table:
+                            # Format collected table
+                            table_html = self._format_basic_table('\n'.join(current_table))
+                            formatted_lines.append(table_html)
+                            in_table = False
+                            current_table = []
+                        formatted_lines.append(f'<p style="margin: 10px 0;">{line}</p>')
+                
+                # Handle any remaining table
+                if current_table:
+                    table_html = self._format_basic_table('\n'.join(current_table))
+                    formatted_lines.append(table_html)
+                
+                return f'''
+                    <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+                        {'\n'.join(formatted_lines)}
+                    </div>
+                '''
+            except:
+                # Ultimate fallback
+                return f'''
+                    <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+                        {content}
+                    </div>
+                '''
+
+    def _format_basic_table(self, table_content: str) -> str:
+        """Basic table formatting for fallback case"""
+        lines = [line.strip() for line in table_content.split('\n') if line.strip()]
+        headers = [cell.strip() for cell in lines[0].split('|')[1:-1]]
+        
+        html = '''
+        <div style="overflow-x: auto;">
+            <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
+                <thead>
+                    <tr>
+        '''
+        
+        # Add headers
+        for header in headers:
+            html += f'<th style="border: 1px solid #ddd; padding: 8px; background-color: #f5f6fa;">{header}</th>'
+        
+        html += '</tr></thead><tbody>'
+        
+        # Add data rows (skip header and separator rows)
+        for line in lines[2:]:
+            if not line.strip().startswith('|-'):
+                cells = [cell.strip() for cell in line.split('|')[1:-1]]
+                html += '<tr>'
+                for cell in cells:
+                    html += f'<td style="border: 1px solid #ddd; padding: 8px;">{cell}</td>'
+                html += '</tr>'
+        
+        html += '</tbody></table></div>'
+        return html
+
     async def create_announcement(self, course_id: str, title: str, message: str, 
                                 is_published: bool = True, file_content: bytes = None,
                                 file_name: str = None) -> Dict[str, Any]:
@@ -44,8 +216,16 @@ class AnnouncementAgent(CanvasBaseAgent):
             if title == "Generated Content":
                 title = await self.generate_title(message)
             
-            # Format the message with HTML paragraph tags
-            message_html = f'<p>{message}</p>'
+            # Determine if content needs complex formatting
+            needs_complex_formatting = self._is_complex_content(message)
+            
+            # Format message based on content type
+            if needs_complex_formatting:
+                logger.info("Using complex formatting for content with special elements")
+                formatted_message = await self._format_content_with_llm(message)
+            else:
+                logger.info("Using simple formatting for basic content")
+                formatted_message = await self._format_simple_content(message)
             
             # Handle file upload if provided
             if file_content and file_name:
@@ -75,9 +255,9 @@ class AnnouncementAgent(CanvasBaseAgent):
                     # Step 2: Upload file content
                     form = aiohttp.FormData()
                     form.add_field('file', 
-                                 file_content,
-                                 filename=file_name,
-                                 content_type='application/octet-stream')
+                                file_content,
+                                filename=file_name,
+                                content_type='application/octet-stream')
                     
                     async with self.session.post(
                         upload_url,
@@ -97,9 +277,12 @@ class AnnouncementAgent(CanvasBaseAgent):
                                     file_info = await file_info_response.json()
                                     file_url = file_info.get('url')
                                     if file_url:
-                                        message_html += (
-                                            f'\n\n<p>Attached file: <a href="{file_url}" '
-                                            f'target="_blank">{file_name}</a></p>'
+                                        # Add file link with simple styling
+                                        formatted_message += (
+                                            f'\n\n<p style="margin-top: 20px; padding: 10px; '
+                                            f'border: 1px solid #e0e0e0; border-radius: 4px;">'
+                                            f'Attached file: <a href="{file_url}" '
+                                            f'target="_blank" style="color: #2196F3;">{file_name}</a></p>'
                                         )
                                 else:
                                     logger.error("Failed to get file info")
@@ -114,7 +297,7 @@ class AnnouncementAgent(CanvasBaseAgent):
             # Create the announcement
             payload = {
                 'title': title,
-                'message': message_html,
+                'message': formatted_message,
                 'is_announcement': True,
                 'published': is_published,
                 'allow_rating': True,

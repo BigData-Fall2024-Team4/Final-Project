@@ -314,33 +314,182 @@ class AssignmentAgent(CanvasBaseAgent):
             logger.error(f"Error uploading file: {str(e)}")
             return None
 
+
+    async def _format_content_with_llm(self, content: str) -> str:
+        """Use LLM to detect content type and format appropriately"""
+        try:
+            llm = ChatOpenAI()
+            
+            prompt = f"""Format the following content for a Canvas LMS Assignment creation, paying special attention to tables and typography.
+
+Rules for formatting:
+1. Tables:
+   - Must be enclosed in proper <table> tags
+   - Each row must use <tr> tags
+   - Headers must use <th> tags
+   - Data cells must use <td> tags
+   - Add borders and padding for readability
+   - Tables must be responsive
+
+2. Typography:
+   - Base font size should be 14px
+   - Headers should use relative sizes:
+     * h1: 20px
+     * h2: 16px
+     * h3: 12px
+   - Line height should be 1.5
+   - Use Arial or sans-serif fonts
+
+3. Structure:
+   - Each section should be clearly separated
+   - Numbered lists should use <ol> tags
+   - Add appropriate spacing between elements
+   - Preserve document hierarchy
+
+Here's the content to format:
+{content}
+
+Required HTML structure:
+<div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.5; color: #333;">
+  [Main content here with all headers, tables, and lists properly formatted]
+</div>
+
+Tables should follow this structure:
+<div style="overflow-x: auto;">
+  <table style="border-collapse: collapse; width: 100%; margin: 15px 0;">
+    <thead>
+      <tr>
+        <th style="border: 1px solid #ddd; padding: 8px; background-color: #f5f6fa;">[header]</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td style="border: 1px solid #ddd; padding: 8px;">[data]</td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+Return ONLY the formatted HTML, no explanations. Ensure all tables are properly formatted with the exact structure shown above."""
+
+            formatted_content = await llm.apredict(prompt)
+            
+            # Ensure we have wrapping div with basic styles
+            if not formatted_content.strip().startswith('<div'):
+                formatted_content = f'''
+                    <div style="font-family: Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #333;">
+                        {formatted_content}
+                    </div>
+                '''
+            
+            return formatted_content.strip()
+            
+        except Exception as e:
+            logger.error(f"Error formatting content with LLM: {str(e)}")
+            # Fallback to basic formatting
+            return self._format_basic_content(content)
+
+    def _format_basic_content(self, content: str) -> str:
+        """Basic formatting for simple text content"""
+        try:
+            formatted_content = []
+            current_section = None
+            current_lines = []
+            
+            for line in content.split('\n'):
+                line = line.strip()
+                if not line:
+                    if current_lines:
+                        if current_section:
+                            formatted_content.append(
+                                f'<h3 style="color: #2c3e50; margin: 15px 0 10px 0;">{current_section}</h3>'
+                            )
+                        formatted_content.append(
+                            f'<p style="margin: 8px 0; line-height: 1.6;">{" ".join(current_lines)}</p>'
+                        )
+                        current_lines = []
+                    continue
+                
+                # Check if this is a section header (ends with ':')
+                if line.endswith(':') and len(line.split()) <= 3:
+                    if current_lines:
+                        formatted_content.append(
+                            f'<p style="margin: 8px 0; line-height: 1.6;">{" ".join(current_lines)}</p>'
+                        )
+                        current_lines = []
+                    current_section = line[:-1]  # Remove the colon
+                    continue
+                
+                current_lines.append(line)
+            
+            # Handle any remaining lines
+            if current_lines:
+                if current_section:
+                    formatted_content.append(
+                        f'<h3 style="color: #2c3e50; margin: 15px 0 10px 0;">{current_section}</h3>'
+                    )
+                formatted_content.append(
+                    f'<p style="margin: 8px 0; line-height: 1.6;">{" ".join(current_lines)}</p>'
+                )
+            
+            return f'''
+                <div style="font-family: Arial, sans-serif; font-size: 14px; color: #333;">
+                    {" ".join(formatted_content)}
+                </div>
+            '''
+            
+        except Exception as e:
+            logger.error(f"Error in basic formatting: {str(e)}")
+            return f'<div style="font-family: Arial, sans-serif;">{content}</div>'
+
+
     async def create_assignment(self, course_id: str, name: str, description: str,
-                        points: int = 100, due_date: Optional[str] = None, 
-                        submission_types: Optional[List[str]] = None,
-                        file_content: bytes = None, file_name: str = None) -> Dict[str, Any]:
+                            points: int = 100, due_date: Optional[str] = None, 
+                            submission_types: Optional[List[str]] = None,
+                            file_content: bytes = None, file_name: str = None) -> Dict[str, Any]:
         """Create a course assignment with enhanced parsing and file support"""
         try:
             await self._ensure_session()
+            
+            # Format the content based on type
+            formatted_description = await self._format_content_with_llm(description)
+
             
             # Handle file upload if provided
             file_url = None
             if file_content and file_name:
                 file_url = await self.upload_file(course_id, file_content, file_name)
                 if file_url:
-                    # Append file link to description
-                    file_html = f'<p>Attached file: <a href="{file_url}" target="_blank">{file_name}</a></p>'
-                    description = description + '\n\n' + file_html
+                    # Append file link to description with consistent styling
+                    file_html = f'''
+                        <div style="margin-top: 20px; padding: 12px; 
+                                border: 1px solid #e0e0e0; border-radius: 4px; 
+                                background-color: #f8f9fa;">
+                            <p style="margin: 0;">
+                                Attached file: <a href="{file_url}" 
+                                            target="_blank" 
+                                            style="color: #2196F3; text-decoration: none;">
+                                            {file_name}
+                                            </a>
+                            </p>
+                        </div>
+                    '''
+                    formatted_description = formatted_description + file_html
 
             # Create the assignment payload
             payload = {
                 'assignment': {
                     'name': name,
-                    'description': description,
+                    'description': formatted_description,
                     'points_possible': points,
                     'submission_types': submission_types or ["online_text_entry"],
                     'published': True
                 }
             }
+
+            # Add due date if provided
+            if due_date:
+                payload['assignment']['due_at'] = due_date
 
             # Create a safe payload for logging (without file content)
             log_payload = {
@@ -349,12 +498,14 @@ class AssignmentAgent(CanvasBaseAgent):
                     'points_possible': points,
                     'submission_types': submission_types or ["online_text_entry"],
                     'has_file_attachment': bool(file_url),
-                    'file_name': file_name if file_url else None
+                    'file_name': file_name if file_url else None,
+                    'due_date': due_date if due_date else None
                 }
             }
             
             logger.info(f"Creating assignment with payload: {json.dumps(log_payload, indent=2)}")
             
+            # Make the API request to create the assignment
             async with self.session.post(
                 f"{self.base_url}/api/v1/courses/{course_id}/assignments",
                 headers=self.headers,
@@ -365,17 +516,18 @@ class AssignmentAgent(CanvasBaseAgent):
                     logger.error(f"Error creating assignment: {error_text}")
                     return {"error": f"API Error: {error_text}"}
                 
+                # Process the successful response
                 result = await response.json()
                 if file_url:
                     result['file_url'] = file_url
+                
+                logger.info(f"Successfully created assignment: {result.get('id')}")
                 return result
 
         except Exception as e:
             logger.error(f"Error creating assignment: {str(e)}")
-            return {"error": str(e)}
-        
-        
-        
+            return {"error": str(e)}     
+            
     async def process_assignment_query(self, query: str, course_id: str, 
                                 file_content: bytes = None, file_name: str = None) -> Dict[str, Any]:
         """Process an assignment creation query with enhanced formatting"""
