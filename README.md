@@ -90,7 +90,6 @@ flowchart LR
 ## Project Resources
 
 Google codelab(Project Proposal):https://codelabs-preview.appspot.com/?file_id=18N7Q5vqwLqaCPEH7Szblxlza9qDLQ3rpXqKyzLJ1fjE#0
-Google codelab(Final Project): https://codelabs-preview.appspot.com/?file_id=1lvm68fvyLlnEblDbiGVmN_Djr3-gZ8VGf8GeERE3J6I/edit?tab=t.0#0
 Project Proposal Video: https://www.youtube.com/watch?v=606P_Wa95QE
 
 ### Architecture diagram ###
@@ -129,6 +128,9 @@ Airflow : http://34.162.53.77:8080/
 Fastapi : http://34.162.53.77:8000/
 
 Working Video link: https://drive.google.com/file/d/1p2aXtTxx_lKQm0P9EeUD-YhpTGqR-3kD/view?usp=sharing
+
+Google codelab(Final Project): https://codelabs-preview.appspot.com/?file_id=1lvm68fvyLlnEblDbiGVmN_Djr3-gZ8VGf8GeERE3J6I/edit?tab=t.0#0
+
 
 ## Cloud Development Setup
 
