@@ -180,7 +180,7 @@ docker-compose up --build
 docker-compose down
 ```
 
-5. **Chrome Extension Setup**:
+4. **Chrome Extension Setup**:
    - Open Chrome, go to `chrome://extensions/`, and enable **Developer mode**.
    - Click on **Load unpacked** and select the `chrome_extension` directory from this repository.
    - Once loaded, the extension will be active. Visit a company website to see if the extension displays application information.
