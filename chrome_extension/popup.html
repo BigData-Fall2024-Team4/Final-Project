@@ -138,6 +138,12 @@
             color: #6c757d;
             margin-top: 5px;
         }
+        #file-upload-description {
+            font-size: 0.7em;
+            color: #6c757d;
+            margin-top: 5px;
+            line-height: 1.4;
+        }
     </style>
 </head>
 <body>
@@ -146,13 +152,16 @@
         <textarea id="message-input" rows="3" placeholder="Type your message..."></textarea>
         <div class="controls">
             <div class="buttons-group">
-                <input type="file" id="file-input" style="display: none">
+                <input type="file" id="file-input" style="display: none" accept=".pdf,.docx,.jpg,.jpeg,.png,.csv,.xlsx">
                 <button id="upload-btn">Upload File</button>
                 <button id="send-btn">Send</button>
             </div>
             <button id="clear-btn">Clear Chat</button>
         </div>
         <div id="file-name"></div>
+        <div id="file-upload-description">
+            Accepted file types: PDF, DOCX, JPG, JPEG, PNG, CSV, XLSX (max 3 pages)
+        </div>
     </div>
     <script src="popup.js"></script>
 </body>

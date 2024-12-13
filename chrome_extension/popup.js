@@ -1,5 +1,6 @@
 let selectedFile = null;
 let conversationId = null;
+let waitingMessageElement = null;
 
 document.addEventListener('DOMContentLoaded', function() {
     const chatContainer = document.getElementById('chat-container');
@@ -9,6 +10,63 @@ document.addEventListener('DOMContentLoaded', function() {
     const clearButton = document.getElementById('clear-btn');
     const fileInput = document.getElementById('file-input');
     const fileNameDisplay = document.getElementById('file-name');
+
+    // Function to show waiting message
+    function showWaitingMessage() {
+        // Remove any existing waiting message
+        if (waitingMessageElement) {
+            waitingMessageElement.remove();
+        }
+
+        // Create waiting message element
+        waitingMessageElement = document.createElement('div');
+        waitingMessageElement.classList.add('message', 'bot-message', 'waiting-message');
+        
+        const contentDiv = document.createElement('div');
+        contentDiv.classList.add('message-content');
+        contentDiv.innerHTML = '<p>Working on it...</p>';
+        
+        const senderLabel = document.createElement('div');
+        senderLabel.classList.add('sender-label');
+        senderLabel.textContent = 'Assistant';
+        
+        waitingMessageElement.appendChild(senderLabel);
+        waitingMessageElement.appendChild(contentDiv);
+        
+        // Append to chat container
+        chatContainer.appendChild(waitingMessageElement);
+        
+        // Auto-scroll to bottom
+        chatContainer.scrollTop = chatContainer.scrollHeight;
+    }
+
+    // Function to remove waiting message
+    function removeWaitingMessage() {
+        if (waitingMessageElement) {
+            waitingMessageElement.remove();
+            waitingMessageElement = null;
+        }
+    }
+
+    // Word-by-Word Rendering Function
+    function renderWordByWord(element, text) {
+        const words = text.split(' ');
+        let currentWord = 0;
+        element.textContent = '';
+
+        function addNextWord() {
+            if (currentWord < words.length) {
+                element.textContent += (currentWord > 0 ? ' ' : '') + words[currentWord];
+                currentWord++;
+                
+                // Adjust speed dynamically (20-50ms per word)
+                const speed = Math.max(20, Math.min(50, 1000 / words.length));
+                setTimeout(addNextWord, speed);
+            }
+        }
+
+        addNextWord();
+    }
 
     // Load chat history when popup opens
     loadChatHistory();
@@ -86,6 +144,9 @@ document.addEventListener('DOMContentLoaded', function() {
             await addMessageToChat('user', message);
             messageInput.value = '';
 
+            // Show waiting message
+            showWaitingMessage();
+
             let response;
 
             if (selectedFile) {
@@ -115,6 +176,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
             }
 
+            // Remove waiting message
+            removeWaitingMessage();
+
             if (!response.ok) {
                 const errorData = await response.text();
                 console.error('Server Error:', errorData);
@@ -134,6 +198,10 @@ document.addEventListener('DOMContentLoaded', function() {
 
         } catch (error) {
             console.error('Error:', error);
+            
+            // Remove waiting message if there's an error
+            removeWaitingMessage();
+            
             await addMessageToChat('bot', 'Sorry, there was an error processing your request. Please try again.');
         }
     }
@@ -155,6 +223,12 @@ document.addEventListener('DOMContentLoaded', function() {
         // Format message if it's from bot
         if (sender === 'bot') {
             contentDiv.innerHTML = formatResponse(message);
+            
+            // Apply word-by-word rendering for bot messages
+            const paragraphs = contentDiv.querySelectorAll('p');
+            paragraphs.forEach(paragraph => {
+                renderWordByWord(paragraph, paragraph.textContent);
+            });
         } else {
             contentDiv.textContent = message;
         }
@@ -216,6 +290,12 @@ document.addEventListener('DOMContentLoaded', function() {
             // Format message if it's from bot
             if (msg.sender === 'bot') {
                 contentDiv.innerHTML = formatResponse(msg.message);
+                
+                // Apply word-by-word rendering for bot messages in history
+                const paragraphs = contentDiv.querySelectorAll('p');
+                paragraphs.forEach(paragraph => {
+                    renderWordByWord(paragraph, paragraph.textContent);
+                });
             } else {
                 contentDiv.textContent = msg.message;
             }
