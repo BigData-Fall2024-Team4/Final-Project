@@ -123,13 +123,15 @@ Login here to verify for general canvas infrastructure setup: https://canvas.ins
 
 ## GCP DEPLOYMENT
 
-Airflow : http://34.162.53.77:8080/
+Airflow: http://35.243.197.25:8080/home
 
-Fastapi : http://34.162.53.77:8000/
+Fastapi : http://35.243.197.25:8000/
 
-Working Video link: https://drive.google.com/file/d/1p2aXtTxx_lKQm0P9EeUD-YhpTGqR-3kD/view?usp=sharing
+Streamlit: http://35.243.197.25:8501/
 
-Google codelab(Final Project): https://codelabs-preview.appspot.com/?file_id=1lvm68fvyLlnEblDbiGVmN_Djr3-gZ8VGf8GeERE3J6I/edit?tab=t.0#0
+Working Video link: https://youtu.be/8IM0TjIXMRo
+
+Google codelab(Final Project): https://codelabs-preview.appspot.com/?file_id=1QdnQ4bhGEMLnumvYofOUmC0TY0ChqccX5FRLZ7DpbKE#0
 
 
 ## Cloud Development Setup
