@@ -1,6 +1,6 @@
 # Final Project
 
-# CanvasGPT: AI Canvas Management Assistant
+# CanvasGPT: AI Chatbot Agent for Canvas LMS
 
 ### Goal of the Project
 - Automate routine administrative tasks in Canvas LMS to reduce time burden
